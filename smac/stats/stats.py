@@ -52,6 +52,8 @@ class Stats(object):
         self._ema_n_configs_per_intensifiy = 0.0
         self._EMA_ALPHA = 0.2
 
+        self.population = [] #Type: List[Configuration]
+
         self._start_time = np.NaN
         self._logger = logging.getLogger(self.__module__ + "." + self.__class__.__name__)
 
