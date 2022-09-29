@@ -36,6 +36,7 @@ from smac.multi_objective.abstract_multi_objective_algorithm import (
 from smac.multi_objective.aggregation_strategy import (
     AggregationStrategy,
     MeanAggregationStrategy,
+    NoAggregationStrategy,
 )
 from smac.optimizer.acquisition import (
     EI,
@@ -44,6 +45,7 @@ from smac.optimizer.acquisition import (
     IntegratedAcquisitionFunction,
     LogEI,
     PriorAcquisitionFunction,
+    EHVI,
 )
 from smac.optimizer.acquisition.maximizer import (
     AcquisitionFunctionMaximizer,
@@ -367,6 +369,10 @@ class SMAC4AC(object):
             else:
                 acquisition_function_instance = EI(**acq_def_kwargs)  # type: ignore[arg-type] # noqa F821
         elif inspect.isclass(acquisition_function):
+            if issubclass(acquisition_function, EHVI):
+                acq_def_kwargs["stats"] = self.stats
+                acq_def_kwargs["runhistory"] = runhistory
+
             acquisition_function_instance = acquisition_function(**acq_def_kwargs)
         else:
             raise TypeError(
