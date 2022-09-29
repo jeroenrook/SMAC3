@@ -46,4 +46,7 @@ class MultiObjectiveRandomForest(MultiObjectiveEPM):
         estimators: List[BaseEPM]
             A list of Random Forests
         """
+        for key in ["configspace", "types", "bounds", "target_names"]:
+            if key in model_kwargs:
+                del model_kwargs[key]
         return [RandomForestWithInstances(configspace, types, bounds, **model_kwargs) for _ in range(self.num_targets)]

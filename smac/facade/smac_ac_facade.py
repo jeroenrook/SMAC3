@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Callable, Dict, List, Optional, Type, Union, cast
 
 import inspect
@@ -347,6 +348,9 @@ class SMAC4AC(object):
             )
         elif inspect.isclass(model):
             model_def_kwargs["configspace"] = self.scenario.cs  # type: ignore[attr-defined] # noqa F821
+            if issubclass(model, MultiObjectiveEPM):
+                model_def_kwargs["target_names"] = scenario.multi_objectives
+                model_def_kwargs["model_kwargs"] = copy.copy(model_def_kwargs)
             model_instance = model(**model_def_kwargs)  # type: ignore # noqa F821
         else:
             raise TypeError("Model not recognized: %s" % (type(model)))
