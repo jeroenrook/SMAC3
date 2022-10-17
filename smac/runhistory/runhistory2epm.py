@@ -450,11 +450,12 @@ class RunHistory2EPM4Cost(AbstractRunHistory2EPM):
         # First build nan-matrix of size #configs x #params+1
         n_rows = len(run_dict)
         n_cols = self.num_params
+        n_obj = runhistory.num_obj
         X = np.ones([n_rows, n_cols + self.n_feats]) * np.nan
 
         # For now we keep it as 1
         # TODO: Extend for native multi-objective
-        y = np.ones([n_rows, 1])
+        y = np.ones([n_rows, n_obj])
 
         # Then populate matrix
         for row, (key, run) in enumerate(run_dict.items()):
@@ -469,16 +470,19 @@ class RunHistory2EPM4Cost(AbstractRunHistory2EPM):
             # run_array[row, -1] = instances[row]
 
             if self.num_obj > 1:
-                assert self.multi_objective_algorithm is not None
-
-                # Let's normalize y here
-                # We use the objective_bounds calculated by the runhistory
-                y_ = normalize_costs(run.cost, runhistory.objective_bounds)
-                y_agg = self.multi_objective_algorithm(y_)
-                y[row] = y_agg
+                if self.multi_objective_algorithm is not None:
+                    # Let's normalize y here
+                    # We use the objective_bounds calculated by the runhistory
+                    y_ = normalize_costs(run.cost, runhistory.objective_bounds)
+                    y_agg = self.multi_objective_algorithm(y_)
+                    y[row, :] = y_agg
+                else:
+                    # Let's keep the objectives separated
+                    #TODO normalise here?
+                    y[row, :] = run.cost
             else:
                 if return_time_as_y:
-                    y[row, 0] = run.time
+                    y[row, :] = run.time
                 else:
                     y[row] = run.cost
 

@@ -530,7 +530,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
         self.num_runs_per_config[config_id] = n_runs + 1
 
-    def get_cost(self, config: Configuration) -> float:
+    def get_cost(self, config: Configuration, aggregate: bool = True) -> float:
         """Returns empirical cost for a configuration. See the class docstring for how the costs are
         computed. The costs are not re-computed, but are read from cache.
 
@@ -553,7 +553,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
             assert type(cost) == list
             # We have to normalize the costs here
             costs = normalize_costs(cost, self.objective_bounds)
-            return float(np.mean(costs))
+            return float(np.mean(costs)) if aggregate else costs
 
         assert type(cost) == float
         return float(cost)
