@@ -968,7 +968,7 @@ class Intensifier(AbstractRacer):
         challengers: Optional[List[Configuration]],
         chooser: Optional[EPMChooser],
     ) -> _config_to_run_type:
-        """Retuns a sequence of challengers to use in intensification If challengers are not
+        """Returns a sequence of challengers to use in intensification If challengers are not
         provided, then optimizer will be used to generate the challenger list.
 
         Parameters
