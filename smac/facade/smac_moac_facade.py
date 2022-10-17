@@ -3,8 +3,9 @@ from typing import Any
 from smac.epm.random_forest.rf_with_instances import RandomForestWithInstances
 from smac.facade.smac_ac_facade import SMAC4AC
 from smac.initial_design.sobol_design import SobolDesign
+from smac.initial_design.latin_hypercube_design import LHDesign
 from smac.optimizer.acquisition import LogEI, EHVI
-from smac.runhistory.runhistory2epm import RunHistory2EPM4LogScaledCost
+from smac.runhistory.runhistory2epm import RunHistory2EPM4LogScaledCost, RunHistory2EPM4Cost
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
 
 __author__ = "Marius Lindauer"
@@ -36,7 +37,7 @@ class SMAC4MOAC(SMAC4AC):
     def __init__(self, **kwargs: Any):
         scenario = kwargs["scenario"]
 
-        kwargs["initial_design"] = kwargs.get("initial_design", SobolDesign)
+        kwargs["initial_design"] = kwargs.get("initial_design", LHDesign)  # TODO
         if len(scenario.cs.get_hyperparameters()) > 21201 and kwargs["initial_design"] is SobolDesign:
             raise ValueError(
                 'The default initial design "Sobol sequence" can only handle up to 21201 dimensions. '
@@ -44,8 +45,8 @@ class SMAC4MOAC(SMAC4AC):
             )
 
         init_kwargs = kwargs.get("initial_design_kwargs", dict())
-        init_kwargs["n_configs_x_params"] = init_kwargs.get("n_configs_x_params", 10)
-        init_kwargs["max_config_fracs"] = init_kwargs.get("max_config_fracs", 0.25)
+        # init_kwargs["n_configs_x_params"] = init_kwargs.get("n_configs_x_params", 10)
+        # init_kwargs["max_config_fracs"] = init_kwargs.get("max_config_fracs", 0.25)
         kwargs["initial_design_kwargs"] = init_kwargs
 
         # Intensification parameters - which intensifier to use and respective parameters
@@ -73,7 +74,7 @@ class SMAC4MOAC(SMAC4AC):
 
         # == Acquisition function
         kwargs["acquisition_function"] = kwargs.get("acquisition_function", EHVI)
-        kwargs["runhistory2epm"] = kwargs.get("runhistory2epm", RunHistory2EPM4LogScaledCost)
+        kwargs["runhistory2epm"] = kwargs.get("runhistory2epm", RunHistory2EPM4Cost)  # TODO changed. MO already normalizes.
 
         # assumes random chooser for random configs
         random_config_chooser_kwargs = kwargs.get("random_configuration_chooser_kwargs", dict())
