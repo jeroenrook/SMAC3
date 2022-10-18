@@ -1,4 +1,7 @@
+import logging
 from typing import Any
+
+import numpy as np
 
 from smac.epm.random_forest.rf_with_instances import RandomForestWithInstances
 from smac.facade.smac_ac_facade import SMAC4AC
@@ -7,6 +10,7 @@ from smac.initial_design.latin_hypercube_design import LHDesign
 from smac.optimizer.acquisition import LogEI, EHVI
 from smac.runhistory.runhistory2epm import RunHistory2EPM4LogScaledCost, RunHistory2EPM4Cost
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
+from smac.intensification.sms_intensifier import SMSIntensifier
 
 __author__ = "Marius Lindauer"
 __copyright__ = "Copyright 2018, ML4AAD"
@@ -18,6 +22,7 @@ class SMAC4MOAC(SMAC4AC):
 
     see smac.facade.smac_Facade for API
     This facade overwrites options available via the SMAC facade
+
 
     See Also
     --------
@@ -50,6 +55,9 @@ class SMAC4MOAC(SMAC4AC):
         kwargs["initial_design_kwargs"] = init_kwargs
 
         # Intensification parameters - which intensifier to use and respective parameters
+        if kwargs.get("intensifier") is not None:
+            logging.log(logging.WARN, "Replacing intensifier argument with 'SMSIntensifier'")
+        kwargs["intensifier"] = SMSIntensifier
         intensifier_kwargs = kwargs.get("intensifier_kwargs", dict())
         intensifier_kwargs["min_chall"] = 1
         kwargs["intensifier_kwargs"] = intensifier_kwargs
