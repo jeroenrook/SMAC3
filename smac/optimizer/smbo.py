@@ -135,7 +135,6 @@ class SMBO(object):
 
         if epm_chooser_kwargs is None:
             epm_chooser_kwargs = {}
-        # TODO: consider if we need an additional EPMChooser for multi-objective optimization
         self.epm_chooser = epm_chooser(
             scenario=scenario,
             stats=stats,
@@ -521,6 +520,12 @@ class SMBO(object):
             time_bound=max(self._min_time, time_left),
             result=result,
         )
+
+        #TODO update population in stats
+        self.stats.population = []
+        for config in self.incumbent:
+            config_id = self.runhistory.config_ids[config]
+            self.stats.population.append(config_id)
 
         for callback in self._callbacks["_incorporate_run_results"]:
             response = callback(smbo=self, run_info=run_info, result=result, time_left=time_left)

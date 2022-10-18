@@ -335,7 +335,7 @@ class AbstractRacer(object):
         Returns
         -------
         None or better of the two configurations x,y
-        """#TODO JG: CHANGE HERE COMPARISON AGAINST POPULATION
+        """
         inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
         chall_runs = run_history.get_runs_for_config(challenger, only_max_observed_budget=True)
         to_compare_runs = set(inc_runs).intersection(chall_runs)

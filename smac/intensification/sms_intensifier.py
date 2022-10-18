@@ -5,6 +5,7 @@ from collections import Counter
 from enum import Enum
 
 import numpy as np
+from pygmo import fast_non_dominated_sorting, hypervolume
 
 from smac.configspace import Configuration
 from smac.intensification.abstract_racer import (
@@ -209,10 +210,16 @@ class SMSIntensifier(AbstractRacer):
         self.minimum_population_size = minimum_population_size
         self.maximum_population_size = maximum_population_size
 
+        self.remaining_incumbent_runs = []
+
+    '''
+     INCUMBENT: produce a list of runs of the population on a new instance
+     CHALLENGER: run the new instance again
+    '''
     def get_next_run(
         self,
-        challengers: Optional[List[Configuration]],
-        incumbent: Configuration,
+        challengers: Optional[list[Configuration]],
+        incumbent: list[Configuration],
         chooser: Optional[EPMChooser],
         run_history: RunHistory,
         repeat_configs: bool = True,
@@ -236,7 +243,7 @@ class SMSIntensifier(AbstractRacer):
         ----------
         challengers : List[Configuration]
             promising configurations
-        incumbent: Configuration
+        incumbent: List[Configuration]
             incumbent configuration
         chooser : smac.optimizer.epm_configuration_chooser.EPMChooser
             optimizer that generates next configurations to use for racing
@@ -286,48 +293,59 @@ class SMSIntensifier(AbstractRacer):
                     challengers=challengers,
                     chooser=chooser,
                 )
-                incumbent = challenger
+                incumbent = [challenger]
             else:
-                inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
+                inc_runs = run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True)
                 if len(inc_runs) > 0:
                     self.logger.debug("Skipping RUN_FIRST_CONFIG stage since " "incumbent has already been ran")
                     self.stage = IntensifierStage.RUN_INCUMBENT
 
         # LINES 3-7
         if self.stage in [IntensifierStage.RUN_FIRST_CONFIG, IntensifierStage.RUN_INCUMBENT]:
+            # TODO workaround to handle increasing the incumbant that consists out of multiple configurations
+            if len(self.remaining_incumbent_runs) > 0:
+                runinfo = self.remaining_incumbent_runs.pop()
+                return RunInfoIntent.RUN, runinfo
 
-            # Line 3
-            # A modified version, that not only checks for maxR
-            # but also makes sure that there are runnable instances,
-            # that is, instances has not been exhausted
-            inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
-
-            # Line 4
-            available_insts = self._get_inc_available_inst(incumbent, run_history)
-            if available_insts and len(inc_runs) < self.maxR:
-                # Lines 5-6-7
-                instance, seed, cutoff = self._get_next_inc_run(available_insts)
-
-                instance_specific = "0"
-                if instance is not None:
-                    instance_specific = self.instance_specifics.get(instance, "0")
-
-                return RunInfoIntent.RUN, RunInfo(
-                    config=incumbent,
-                    instance=instance,
-                    instance_specific=instance_specific,
-                    seed=seed,
-                    cutoff=cutoff,
-                    capped=False,
-                    budget=0.0,
-                )
             else:
-                # This point marks the transitions from lines 3-7
-                # to 8-18.
+                # Line 3
+                # A modified version, that not only checks for maxR
+                # but also makes sure that there are runnable instances,
+                # that is, instances has not been exhausted
+                # TODO: only works assuming all incumbent ran on the same instances
+                inc_runs = run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True)
 
-                self.logger.debug("No further instance-seed pairs for incumbent available.")
+                # Line 4
+                available_insts = self._get_inc_available_inst(incumbent, run_history)
+                if available_insts and len(inc_runs) < self.maxR:
+                    # Lines 5-6-7
+                    instance, seed, cutoff = self._get_next_inc_run(available_insts)
 
-                self.stage = IntensifierStage.RUN_CHALLENGER
+                    instance_specific = "0"
+                    if instance is not None:
+                        instance_specific = self.instance_specifics.get(instance, "0")
+
+                    self.remaining_incumbent_runs = []
+                    for config in incumbent:
+                        runinfo = RunInfo(
+                            config=config,
+                            instance=instance,
+                            instance_specific=instance_specific,
+                            seed=seed,
+                            cutoff=cutoff,
+                            capped=False,
+                            budget=0.0,
+                        )
+                        self.remaining_incumbent_runs.append(runinfo)
+
+                    runinfo = self.remaining_incumbent_runs.pop()
+                    return RunInfoIntent.RUN, runinfo
+                else:
+                    # This point marks the transitions from lines 3-7
+                    # to 8-18.
+
+                    self.logger.debug("No further instance-seed pairs for incumbent available.")
+                    self.stage = IntensifierStage.RUN_CHALLENGER
 
         # Understand who is the active challenger.
         if self.stage == IntensifierStage.RUN_BASIS:
@@ -461,10 +479,15 @@ class SMSIntensifier(AbstractRacer):
         else:
             raise ValueError("No valid stage found!")
 
+    '''
+     After a run is finished.
+      INCUMBENT: 
+      CHALLENGER: 
+    '''
     def process_results(
         self,
         run_info: RunInfo,
-        incumbent: Optional[Configuration],
+        incumbent: Optional[list[Configuration]],
         run_history: RunHistory,
         time_bound: float,
         result: RunValue,
@@ -489,7 +512,7 @@ class SMSIntensifier(AbstractRacer):
         ----------
         run_info : RunInfo
                A RunInfo containing the configuration that was evaluated
-        incumbent : Optional[Configuration]
+        incumbent : Optional[list[Configuration]]
             best configuration so far, None in 1st run
         run_history : RunHistory
             stores all runs we ran so far
@@ -512,7 +535,7 @@ class SMSIntensifier(AbstractRacer):
         if self.stage == IntensifierStage.PROCESS_FIRST_CONFIG_RUN:
             if incumbent is None:
                 self.logger.info("First run, no incumbent provided;" " challenger is assumed to be the incumbent")
-                incumbent = run_info.config
+                incumbent = [run_info.config]
 
         if self.stage in [
             IntensifierStage.PROCESS_INCUMBENT_RUN,
@@ -521,12 +544,12 @@ class SMSIntensifier(AbstractRacer):
             self._ta_time += result.time
             self.num_run += 1
             self._process_inc_run(
-                incumbent=incumbent,
+                incumbent=run_info.config,  # CHANGED
                 run_history=run_history,
                 log_traj=log_traj,
             )
 
-        else:
+        else:  # stage is PROCESS_CHALLENGER
             self.num_run += 1
             self.num_chall_run += 1
             if result.status == StatusType.CAPPED:
@@ -534,7 +557,6 @@ class SMSIntensifier(AbstractRacer):
                 self.logger.debug("Challenger itensification timed out due " "to adaptive capping.")
                 self.stage = IntensifierStage.RUN_INCUMBENT
             else:
-
                 self._ta_time += result.time
                 incumbent = self._process_racer_results(
                     challenger=run_info.config,
@@ -574,7 +596,7 @@ class SMSIntensifier(AbstractRacer):
 
                 self._next_iteration()
 
-        inc_perf = run_history.get_cost(incumbent)
+        inc_perf = 0  # run_history.get_cost(incumbent) # CHANGED: not used in SMBO.py
 
         return incumbent, inc_perf
 
@@ -619,7 +641,7 @@ class SMSIntensifier(AbstractRacer):
 
     def _get_inc_available_inst(
         self,
-        incumbent: Configuration,
+        incumbent: list[Configuration],
         run_history: RunHistory,
         log_traj: bool = True,
     ) -> List[str]:
@@ -639,7 +661,8 @@ class SMSIntensifier(AbstractRacer):
         """
         # Line 4
         # find all instances that have the most runs on the inc
-        inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
+        # TODO: only works assuming all incumbent ran on the same instances
+        inc_runs = run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True)
         inc_inst = [s.instance for s in inc_runs]
         inc_inst = list(Counter(inc_inst).items())
 
@@ -665,7 +688,7 @@ class SMSIntensifier(AbstractRacer):
         run_history: RunHistory,
         log_traj: bool = True,
     ) -> None:
-        """Method to process the results of a challenger that races an incumbent.
+        """Method to process the results of an incumbent.
 
         Parameters
         ----------
@@ -679,10 +702,11 @@ class SMSIntensifier(AbstractRacer):
         # output estimated performance of incumbent
         inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
         inc_perf = run_history.get_cost(incumbent)
-        format_value = format_array(inc_perf)
-        self.logger.info(f"Updated estimated cost of incumbent on {len(inc_runs)} runs: {format_value}")
+        # format_value = format_array(inc_perf)
+        # self.logger.info(f"Updated estimated cost of incumbent on {len(inc_runs)} runs: {format_value}")
 
         # if running first configuration, go to next stage after 1st run
+        # TODO: Changed logic to support the running of an incumbent that consists out of multiple configurations
         if self.stage in [
             IntensifierStage.RUN_FIRST_CONFIG,
             IntensifierStage.PROCESS_FIRST_CONFIG_RUN,
@@ -692,12 +716,13 @@ class SMSIntensifier(AbstractRacer):
         else:
             # Termination condition; after each run, this checks
             # whether further runs are necessary due to minR
-            if len(inc_runs) >= self.minR or len(inc_runs) >= self.maxR:
+            if (len(inc_runs) >= self.minR or len(inc_runs) >= self.maxR) and len(self.remaining_incumbent_runs) == 0:
                 self.stage = IntensifierStage.RUN_CHALLENGER
             else:
                 self.stage = IntensifierStage.RUN_INCUMBENT
 
-        self._compare_configs(incumbent=incumbent, challenger=incumbent, run_history=run_history, log_traj=log_traj)
+        #TODO why is this needed? This only produces some logging and adds the first incumbent run to the trajectory.
+        #self._compare_configs(incumbent=incumbent, challenger=incumbent, run_history=run_history, log_traj=log_traj)
 
     def _get_next_racer(
         self,
@@ -785,7 +810,7 @@ class SMSIntensifier(AbstractRacer):
     def _process_racer_results(
         self,
         challenger: Configuration,
-        incumbent: Configuration,
+        incumbent: list[Configuration],
         run_history: RunHistory,
         log_traj: bool = True,
     ) -> Optional[Configuration]:
@@ -796,7 +821,7 @@ class SMSIntensifier(AbstractRacer):
         ----------
         challenger : Configuration
             Configuration which challenges incumbent
-        incumbent : Configuration
+        incumbent : list[Configuration]
             Best configuration so far
         run_history : RunHistory
             Stores all runs we ran so far
@@ -819,7 +844,8 @@ class SMSIntensifier(AbstractRacer):
             )
 
             # update intensification stage
-            if new_incumbent == incumbent:
+            # CHANGED
+            if challenger not in new_incumbent:
                 # move on to the next iteration
                 self.stage = IntensifierStage.RUN_INCUMBENT
                 self.continue_challenger = False
@@ -828,10 +854,9 @@ class SMSIntensifier(AbstractRacer):
                     len(chal_runs),
                     chal_perf,
                 )
-
-            elif new_incumbent == challenger:
+            elif challenger in new_incumbent:
                 # New incumbent found
-                incumbent = challenger
+                incumbent = new_incumbent
                 self.continue_challenger = False
                 # compare against basis configuration if provided, else go to next iteration
                 if self.always_race_against and self.always_race_against != challenger:
@@ -843,7 +868,6 @@ class SMSIntensifier(AbstractRacer):
                     len(chal_runs),
                     chal_perf,
                 )
-
             else:  # Line 17
                 # challenger is not worse, continue
                 self.N = 2 * self.N
@@ -894,7 +918,8 @@ class SMSIntensifier(AbstractRacer):
         """
         # get next instances left for the challenger
         # Line 8
-        inc_inst_seeds = set(run_history.get_runs_for_config(incumbent, only_max_observed_budget=True))
+        # TODO assuming all configs in incumbent are the same
+        inc_inst_seeds = set(run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True))
         chall_inst_seeds = set(run_history.get_runs_for_config(challenger, only_max_observed_budget=True))
         # Line 10
         missing_runs = sorted(inc_inst_seeds - chall_inst_seeds)
@@ -910,7 +935,9 @@ class SMSIntensifier(AbstractRacer):
         # because of efficiency computed here
         inst_seed_pairs = list(inc_inst_seeds - set(missing_runs))
         # cost used by incumbent for going over all runs in inst_seed_pairs
-        inc_sum_cost = run_history.sum_cost(config=incumbent, instance_seed_budget_keys=inst_seed_pairs, normalize=True)
+        inc_sum_cost = 0
+        for config in incumbent:
+            inc_sum_cost += run_history.sum_cost(config=config, instance_seed_budget_keys=inst_seed_pairs, normalize=True)
         assert type(inc_sum_cost) == float
         return to_run, inc_sum_cost
 
@@ -1030,7 +1057,7 @@ class SMSIntensifier(AbstractRacer):
 
     def _compare_configs(
         self,
-        incumbent: Configuration,
+        incumbent: list[Configuration],
         challenger: Configuration,
         run_history: RunHistory,
         log_traj: bool = True,
@@ -1048,7 +1075,7 @@ class SMSIntensifier(AbstractRacer):
 
         Parameters
         ----------
-        incumbent: Configuration
+        incumbent: list[Configuration]
             Current incumbent
         challenger: Configuration
             Challenger configuration
@@ -1060,69 +1087,96 @@ class SMSIntensifier(AbstractRacer):
         Returns
         -------
         None or better of the two configurations x,y
-        """#TODO JG: CHANGE HERE COMPARISON AGAINST POPULATION
-        inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
+        """
+        #TODO JG: CHANGE HERE COMPARISON AGAINST POPULATION
+        #TODO JG: Assuming that all incumbents ran on the same instance+seed
+        inc_runs = run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True)
         chall_runs = run_history.get_runs_for_config(challenger, only_max_observed_budget=True)
         to_compare_runs = set(inc_runs).intersection(chall_runs)
 
         # performance on challenger runs, the challenger only becomes incumbent
         # if it dominates the incumbent
-        chal_perf = run_history.average_cost(challenger, to_compare_runs, normalize=True)
-        inc_perf = run_history.average_cost(incumbent, to_compare_runs, normalize=True)
+        chal_perf = run_history.average_cost(challenger, to_compare_runs, normalize=False)
+        inc_perf = []
+        for inc in incumbent:
+            inc_perf.append(run_history.average_cost(inc, to_compare_runs, normalize=False))
 
-        assert type(chal_perf) == float
-        assert type(inc_perf) == float
+        # below min pop size -> unconditionally accept
+        # above max pop size -> drop the one that contributes the least to HV
+        # between min and max -> accept if part of non-dominated set
+        #   if dominated in population -> remove until min pop size is reached
 
-        # Line 15
-        if np.any(chal_perf > inc_perf) and len(chall_runs) >= self.minR:
-            chal_perf_format = format_array(chal_perf)
-            inc_perf_format = format_array(inc_perf)
-            # Incumbent beats challenger
-            self.logger.debug(
-                f"Incumbent ({inc_perf_format}) is better than challenger "
-                f"({chal_perf_format}) on {len(chall_runs)} runs."
-            )
-            return incumbent
+        # Logic of comparison
+        # if |incumbent| is below minimum population size
+        #   if challenger_runs less than incumbent_runs -> continue intensification (return None)
+        #   else -> accept challenger
+        # elif |incumbent| is maximum population size (incumbent is fully nd)
+        #   if challenger in incumbent after reduce
+        #       if challenger_runs less than incumbent_runs -> continue intensification
+        #       else -> accept challenger
+        #           return incumbent
+        #   else -> reject challenger
+        # else |incumbent| between min and max
+        #   if challenger is ND element
+        #       if challenger_runs less than incumbent_runs -> continue intensification
+        #       else -> accept challenger
+        #           while dominated elements in incumbent       |
+        #             and |incumbent| > minimum population size |-> remove least contributing element
+        #   else -> reject challenger
+        # TODO: add logger messages
+        # TODO: trajectory logger
+        if len(incumbent) < self.minimum_population_size:
+            if not set(inc_runs) - set(chall_runs):
+                return [challenger] + incumbent  # accept challenger
+            else:
+                return None  # continue intensification
+        elif len(incumbent) >= self.maximum_population_size:
+            # incumbent <- Reduce(incumbent+[challenger])
+            # Reduce
+            incumbent = [challenger] + incumbent
+            performances = np.array([chal_perf] + inc_perf)  # Challenger index = 0
+            mask = np.ones(len(performances), dtype=bool)
+            hypervolumes = np.zeros(len(performances), dtype=bool)
+            reference_point = np.array([bound[1] for bound in run_history.objective_bounds])  # TODO separate function
+            for point in range(len(performances)):
+                mask[point] = False
+                hypervolumes[point] = hypervolume(performances[mask, :]).compute(ref_point=reference_point)
+                mask[point] = True
+            worst_point = np.argmin(hypervolumes)
+            del incumbent[worst_point]
 
-        # Line 16
-        if not set(inc_runs) - set(chall_runs):
-            # no plateau walks
-            if np.any(chal_perf >= inc_perf):
-                chal_perf_format = format_array(chal_perf)
-                inc_perf_format = format_array(inc_perf)
+            if challenger not in incumbent:
+                return incumbent  # reject challenger
+            else:
+                if not set(inc_runs) - set(chall_runs):
+                    return incumbent  # accept challenger
+                else:
+                    return None  # continue intensification
+        else:  # self.minimum_population_size <= len(incumbent) < self.maximum_population_size
+            performances = np.array([chal_perf] + inc_perf) #Challenger index = 0
+            ndf, dl, dc, ndr = fast_non_dominated_sorting(performances)
+            nondominated = ndf[0]
+            dominated = []
+            for front in ndf[1:]:
+                dominated += list(front)
 
-                self.logger.debug(
-                    f"Incumbent ({inc_perf_format}) is at least as good as the "
-                    f"challenger ({chal_perf_format}) on {len(chall_runs)} runs."
-                )
-                if log_traj and self.stats.inc_changed == 0:
-                    # adding incumbent entry
-                    self.stats.inc_changed += 1  # first incumbent
-                    self.traj_logger.add_entry(
-                        train_perf=chal_perf,
-                        incumbent_id=self.stats.inc_changed,
-                        incumbent=incumbent,
-                    )
-                return incumbent
+            if 0 in nondominated:
+                if not set(inc_runs) - set(chall_runs):
+                    incumbent = [challenger] + incumbent  # Accept -> add challenger to incumbent
+                    to_remove = []
+                    while len(dominated) > 0 and len(incumbent) - len(to_remove) > self.minimum_population_size:
+                        to_remove.append(dominated.pop())  # Remove most dominated point
+                    if len(to_remove) > 0:
+                        to_remove = [incumbent[config_id] for config_id in to_remove]
+                        for config in to_remove:
+                            incumbent.remove(config)
 
-            # Challenger is better than incumbent
-            # and has at least the same runs as inc
-            # -> change incumbent
-            n_samples = len(chall_runs)
-            chal_perf_format = format_array(chal_perf)
-            inc_perf_format = format_array(inc_perf)
+                    # to_remove.sort(reverse=True)  # Safe deletion
+                    # for confid in to_remove:
+                    #     del incumbent[confid]
 
-            self.logger.info(
-                f"Challenger ({chal_perf_format}) is better than incumbent ({inc_perf_format}) " f"on {n_samples} runs."
-            )
-            self._log_incumbent_changes(incumbent, challenger)
-
-            if log_traj:
-                self.stats.inc_changed += 1
-                self.traj_logger.add_entry(
-                    train_perf=chal_perf, incumbent_id=self.stats.inc_changed, incumbent=challenger
-                )
-            return challenger
-
-        # undecided
-        return None
+                    return incumbent  # accept challenger
+                else:
+                    return None  # continue intensification
+            else:
+                return incumbent  # reject challenger
