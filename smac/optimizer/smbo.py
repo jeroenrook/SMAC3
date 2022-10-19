@@ -522,10 +522,11 @@ class SMBO(object):
         )
 
         #TODO update population in stats
-        self.stats.population = []
-        for config in self.incumbent:
-            config_id = self.runhistory.config_ids[config]
-            self.stats.population.append(config_id)
+        if isinstance(self.incumbent, list):
+            self.stats.population = []
+            for config in self.incumbent:
+                config_id = self.runhistory.config_ids[config]
+                self.stats.population.append(config_id)
 
         for callback in self._callbacks["_incorporate_run_results"]:
             response = callback(smbo=self, run_info=run_info, result=result, time_left=time_left)
