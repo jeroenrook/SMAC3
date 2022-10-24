@@ -7,6 +7,7 @@ import logging
 import time
 
 import numpy as np
+from pygmo import fast_non_dominated_sorting
 
 from smac.configspace import (
     Configuration,
@@ -219,7 +220,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         -------
         List
         """
-        init_points = self._get_initial_points(num_points, runhistory, additional_start_points)
+        init_points = self._get_initial_points(num_points, runhistory, stats, additional_start_points)
         configs_acq = self._do_search(init_points)
 
         # shuffle for random tie-break
@@ -236,6 +237,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         self,
         num_points: int,
         runhistory: RunHistory,
+        stats: Stats,
         additional_start_points: Optional[List[Tuple[float, Configuration]]],
     ) -> List[Configuration]:
 
@@ -310,17 +312,12 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         else:
             additional_start_points = []
 
-        init_points = []
-        init_points_as_set = set()  # type: Set[Configuration]
-        for cand in itertools.chain(
+        candidates = itertools.chain(
             configs_previous_runs_sorted,
             configs_previous_runs_sorted_by_cost,
             additional_start_points,
-        ):
-            if cand not in init_points_as_set:
-                init_points.append(cand)
-                init_points_as_set.add(cand)
-        return init_points
+        )
+        return self._unique_list(candidates)
 
     def _do_search(
         self,
@@ -483,6 +480,115 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         )
 
         return [(a, i) for a, i in zip(acq_val_candidates, candidates)]
+
+    @staticmethod
+    def _unique_list(elements: list) -> list:
+        """
+        Returns the list with only unique elements while remaining the list order.
+
+        Parameters
+        ----------
+        elements
+
+        Returns
+        -------
+
+        """
+        return_list = []
+        return_list_as_set = set()
+        for e in elements:
+            if e not in return_list_as_set:
+                return_list.append(e)
+                return_list_as_set.add(e)
+
+        return return_list
+
+
+class MOLocalSearch(LocalSearch):
+
+    def _get_initial_points(
+            self,
+            num_points: int,
+            runhistory: RunHistory,
+            stats: Stats,
+            additional_start_points: Optional[List[Tuple[float, Configuration]]],
+    ) -> List[Configuration]:
+        init_points = super()._get_initial_points(num_points, runhistory, stats, additional_start_points)
+
+        #Add population to Local search
+        if len(stats.population) > 0:
+            population = [runhistory.ids_config[confid] for confid in stats.population]
+            init_points = self._unique_list(itertools.chain(population, init_points))
+        return init_points
+
+    def _get_init_points_from_previous_configs(
+        self,
+        num_points: int,
+        configs_previous_runs: List[Configuration],
+        additional_start_points: Optional[List[Tuple[float, Configuration]]],
+    ) -> List[Configuration]:
+        """
+        A function that generates a set of initial points from the previous configurations and additional points (if
+        applicable). The idea is to decouple runhistory from the local search model and replace it with a more genreal
+        form (List[Configuration]).
+
+        Parameters
+        ----------
+        num_points: int
+            Number of initial points to be generated
+        configs_previous_runs: List[Configuration]
+            previous configuration from runhistory
+        additional_start_points: Optional[List[Tuple[float, Configuration]]]
+            if we want to specify another set of points as initial points
+
+        Returns
+        -------
+        init_points: List[Configuration]
+            a set of initial points
+        """
+        # configurations with the highest previous EI
+        configs_previous_runs_sorted = self._sort_configs_by_acq_value(configs_previous_runs)
+        configs_previous_runs_sorted = [conf[1] for conf in configs_previous_runs_sorted[:num_points]]
+
+        # configurations with the lowest predictive cost, check for None to make unit tests work
+        if self.acquisition_function.model is not None:
+            conf_array = convert_configurations_to_array(configs_previous_runs)
+            costs = self.acquisition_function.model.predict_marginalized_over_instances(conf_array)[0]
+            assert len(conf_array) == len(costs), (conf_array.shape, costs.shape)
+
+            # In case of the predictive model returning the prediction for more than one objective per configuration
+            # (for example multi-objective or EIPS) we sort here based on the dominance order. In each front
+            # configurations are sorted on the number of points they dominate overall.
+            # Perform ND sorting
+            sort_objectives = costs.flatten()
+            if len(costs.shape) == 2 and costs.shape[1] > 1:
+                _, domination_list, _, non_domination_rank = fast_non_dominated_sorting(costs)
+                domination_list = [len(i) for i in domination_list]
+                sort_objectives = (domination_list, non_domination_rank) # Last column is primary sort key!
+
+            # From here
+            # http://stackoverflow.com/questions/20197990/how-to-make-argsort-result-to-be-random-between-equal-values
+            random = self.rng.rand(len(costs))
+            # Last column is primary sort key!
+            indices = np.lexsort((random.flatten(), *sort_objectives))
+
+            # Cannot use zip here because the indices array cannot index the
+            # rand_configs list, because the second is a pure python list
+            configs_previous_runs_sorted_by_cost = [configs_previous_runs[ind] for ind in indices][:num_points]
+        else:
+            configs_previous_runs_sorted_by_cost = []
+
+        if additional_start_points is not None:
+            additional_start_points = [asp[1] for asp in additional_start_points[:num_points]]
+        else:
+            additional_start_points = []
+
+        candidates = itertools.chain(
+            configs_previous_runs_sorted,
+            configs_previous_runs_sorted_by_cost,
+            additional_start_points,
+        )
+        return self._unique_list(candidates)
 
 
 class DiffOpt(AcquisitionFunctionMaximizer):
@@ -691,8 +797,35 @@ class LocalAndSortedRandomSearch(AcquisitionFunctionMaximizer):
             "First 5 acq func (origin) values of selected configurations: %s",
             str([[_[0], _[1].origin] for _ in next_configs_by_acq_value[:5]]),
         )
-        stats.acquisition_values.append(np.array([t[0] for t in next_configs_by_acq_value]))  # TODO Debug
+        stats.acquisition_values.append([t[0] for t in next_configs_by_acq_value])  # TODO Debug
         return next_configs_by_acq_value
+
+
+class MOLocalAndSortedRandomSearch(LocalAndSortedRandomSearch):
+
+    def __init__(
+        self,
+        acquisition_function: AbstractAcquisitionFunction,
+        config_space: ConfigurationSpace,
+        rng: Union[bool, np.random.RandomState] = None,
+        max_steps: Optional[int] = None,
+        n_steps_plateau_walk: int = 10,
+        n_sls_iterations: int = 10,
+    ):
+        super().__init__(acquisition_function,
+                                                   config_space,
+                                                   rng,
+                                                   max_steps,
+                                                   n_steps_plateau_walk,
+                                                   n_sls_iterations)
+
+        self.local_search = MOLocalSearch(
+            acquisition_function=acquisition_function,
+            config_space=config_space,
+            rng=rng,
+            max_steps=max_steps,
+            n_steps_plateau_walk=n_steps_plateau_walk,
+        )
 
 
 class LocalAndSortedPriorRandomSearch(AcquisitionFunctionMaximizer):

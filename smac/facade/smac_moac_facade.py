@@ -11,6 +11,7 @@ from smac.optimizer.acquisition import LogEI, EHVI
 from smac.runhistory.runhistory2epm import RunHistory2EPM4LogScaledCost, RunHistory2EPM4Cost
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
 from smac.intensification.sms_intensifier import SMSIntensifier
+from smac.optimizer.acquisition.maximizer import MOLocalAndSortedRandomSearch
 
 __author__ = "Marius Lindauer"
 __copyright__ = "Copyright 2018, ML4AAD"
@@ -94,6 +95,8 @@ class SMAC4MOAC(SMAC4AC):
         acquisition_function_optimizer_kwargs = kwargs.get("acquisition_function_optimizer_kwargs", dict())
         acquisition_function_optimizer_kwargs["n_sls_iterations"] = 10
         kwargs["acquisition_function_optimizer_kwargs"] = acquisition_function_optimizer_kwargs
+
+        kwargs["acquisition_function_optimizer"] = MOLocalAndSortedRandomSearch
 
         super().__init__(**kwargs)
         self.logger.info(self.__class__)
