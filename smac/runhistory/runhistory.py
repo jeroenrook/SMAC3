@@ -591,6 +591,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
         config: Configuration,
         instance_seed_budget_keys: Optional[Iterable[InstSeedBudgetKey]] = None,
         normalize: bool = False,
+        aggregate: bool = True,
     ) -> float | list[float]:
         """Return the average cost of a configuration. This is the mean of costs of all instance-
         seed pairs.
@@ -620,8 +621,10 @@ class RunHistory(Mapping[RunKey, RunValue]):
                 averaged_costs = np.mean(costs, axis=0).tolist()
 
                 if normalize:
-                    normalized_costs = normalize_costs(averaged_costs, self.objective_bounds)
-                    return float(np.mean(normalized_costs))
+                    averaged_costs = normalize_costs(averaged_costs, self.objective_bounds)
+
+                if aggregate:
+                    return float(np.mean(averaged_costs))
                 else:
                     return averaged_costs
 

@@ -701,7 +701,7 @@ class SMSIntensifier(AbstractRacer):
         """
         # output estimated performance of incumbent
         inc_runs = run_history.get_runs_for_config(incumbent, only_max_observed_budget=True)
-        inc_perf = run_history.get_cost(incumbent)
+        inc_perf = np.array(run_history.get_cost(incumbent, aggregate=False)).reshape(1, -1)
         # format_value = format_array(inc_perf)
         # self.logger.info(f"Updated estimated cost of incumbent on {len(inc_runs)} runs: {format_value}")
 
@@ -722,6 +722,15 @@ class SMSIntensifier(AbstractRacer):
                 self.stage = IntensifierStage.RUN_INCUMBENT
 
         #TODO why is this needed? This only produces some logging and adds the first incumbent run to the trajectory.
+        if log_traj and self.stats.inc_changed == 0:
+            self.stats.inc_changed += 1  # first incumbent
+            reference_point = np.full(len(run_history.objective_bounds), 1.1)  # TODO assuming normalized objectives
+            hv = self._get_hypervolume(inc_perf, reference_point)
+            self.traj_logger.add_entry(
+                train_perf=hv,
+                incumbent_id=self.stats.inc_changed,
+                incumbent=[incumbent],
+            )
         #self._compare_configs(incumbent=incumbent, challenger=incumbent, run_history=run_history, log_traj=log_traj)
 
     def _get_next_racer(
@@ -1055,13 +1064,18 @@ class SMSIntensifier(AbstractRacer):
 
         self.stats.update_average_configs_per_intensify(n_configs=self._chall_indx)
 
+    def _get_hypervolume(self, points: np.ndarray, reference_point: np.ndarray = None):
+        if reference_point is None:
+            reference_point = np.max(points, axis=0)
+        return hypervolume(points).compute(reference_point)
+
     def _compare_configs(
         self,
         incumbent: list[Configuration],
         challenger: Configuration,
         run_history: RunHistory,
         log_traj: bool = True,
-    ) -> Optional[Configuration]:
+    ) -> Optional[list[Configuration]]:
         """Compare wrt configuration wrt the runhistory and return the one which performs better (or
         None if the decision is not safe)
 
@@ -1096,10 +1110,13 @@ class SMSIntensifier(AbstractRacer):
 
         # performance on challenger runs, the challenger only becomes incumbent
         # if it dominates the incumbent
-        chal_perf = run_history.average_cost(challenger, to_compare_runs, normalize=False)
+        chal_perf = run_history.average_cost(challenger, to_compare_runs, normalize=True, aggregate=False)
         inc_perf = []
         for inc in incumbent:
-            inc_perf.append(run_history.average_cost(inc, to_compare_runs, normalize=False))
+            inc_perf.append(run_history.average_cost(inc, to_compare_runs, normalize=True, aggregate=False))
+
+        # reference_point = np.array([bound[1] for bound in run_history.objective_bounds])
+        reference_point = np.full(len(run_history.objective_bounds), 1.1)  # TODO assuming normalized objectives
 
         # below min pop size -> unconditionally accept
         # above max pop size -> drop the one that contributes the least to HV
@@ -1127,6 +1144,20 @@ class SMSIntensifier(AbstractRacer):
         # TODO: trajectory logger
         if len(incumbent) < self.minimum_population_size:
             if not set(inc_runs) - set(chall_runs):
+                self.logger.debug(
+                    f"Incumbent size is below {self.maximum_population_size} "
+                    f"add challenger to incumbent."
+                )
+
+                if log_traj:
+                    self.stats.inc_changed += 1  # first incumbent
+                    hv = self._get_hypervolume(np.array([chal_perf] + inc_perf), reference_point)
+                    self.traj_logger.add_entry(
+                        train_perf=hv,
+                        incumbent_id=self.stats.inc_changed,
+                        incumbent=incumbent,
+                    )
+
                 return [challenger] + incumbent  # accept challenger
             else:
                 return None  # continue intensification
@@ -1137,7 +1168,6 @@ class SMSIntensifier(AbstractRacer):
             performances = np.array([chal_perf] + inc_perf)  # Challenger index = 0
             mask = np.ones(len(performances), dtype=bool)
             hypervolumes = np.zeros(len(performances), dtype=bool)
-            reference_point = np.array([bound[1] for bound in run_history.objective_bounds])  # TODO separate function
             for point in range(len(performances)):
                 mask[point] = False
                 hypervolumes[point] = hypervolume(performances[mask, :]).compute(ref_point=reference_point)
@@ -1146,9 +1176,27 @@ class SMSIntensifier(AbstractRacer):
             del incumbent[worst_point]
 
             if challenger not in incumbent:
+                self.logger.debug(
+                    f"Incumbent does not improve with challenger "
+                    f"on {len(chall_runs)} runs."
+                )
                 return incumbent  # reject challenger
             else:
                 if not set(inc_runs) - set(chall_runs):
+                    hv = self._get_hypervolume(np.array([chal_perf] + inc_perf), reference_point)
+                    self.logger.debug(
+                        f"Incumbent does improve with challenger "
+                        f"Accepted challenger and removed the configuration " 
+                        f"that contributed the least to the hypervolume "
+                        f"new hypervolume of ({hv:.3f}) on {len(chall_runs)} runs. "
+                    )
+                    if log_traj:
+                        self.stats.inc_changed += 1  # first incumbent
+                        self.traj_logger.add_entry(
+                            train_perf=hv,
+                            incumbent_id=self.stats.inc_changed,
+                            incumbent=incumbent,
+                        )
                     return incumbent  # accept challenger
                 else:
                     return None  # continue intensification
@@ -1166,7 +1214,8 @@ class SMSIntensifier(AbstractRacer):
                     to_remove = []
                     while len(dominated) > 0 and len(incumbent) - len(to_remove) > self.minimum_population_size:
                         to_remove.append(dominated.pop())  # Remove most dominated point
-                    if len(to_remove) > 0:
+                    n_to_remove = len(to_remove)
+                    if n_to_remove > 0:
                         to_remove = [incumbent[config_id] for config_id in to_remove]
                         for config in to_remove:
                             incumbent.remove(config)
@@ -1174,9 +1223,26 @@ class SMSIntensifier(AbstractRacer):
                     # to_remove.sort(reverse=True)  # Safe deletion
                     # for confid in to_remove:
                     #     del incumbent[confid]
-
+                    hv = self._get_hypervolume(np.array([chal_perf] + inc_perf), reference_point)
+                    self.logger.debug(
+                        f"Challenger is non-dominated. "
+                        f"Accepted challenger and removed {n_to_remove} dominated configuration "
+                        f"from the incumbent. "
+                        f"New hypervolume of ({hv:.3f}) on {len(chall_runs)} runs."
+                    )
+                    if log_traj:
+                        self.stats.inc_changed += 1  # first incumbent
+                        self.traj_logger.add_entry(
+                            train_perf=hv,
+                            incumbent_id=self.stats.inc_changed,
+                            incumbent=incumbent,
+                        )
                     return incumbent  # accept challenger
                 else:
                     return None  # continue intensification
             else:
+                self.logger.debug(
+                    f"Incumbent does not improve with challenger "
+                    f"on {len(chall_runs)} runs."
+                )
                 return incumbent  # reject challenger

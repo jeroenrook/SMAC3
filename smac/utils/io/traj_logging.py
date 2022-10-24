@@ -95,7 +95,7 @@ class TrajLogger(object):
         self,
         train_perf: Union[float, np.ndarray],
         incumbent_id: int,
-        incumbent: Configuration,
+        incumbent: list[Configuration] | Configuration,
         budget: float = 0,
     ) -> None:
         """Adds entries to trajectory files (several formats) with using the
@@ -137,7 +137,7 @@ class TrajLogger(object):
         self,
         train_perf: Union[float, List[float]],
         incumbent_id: int,
-        incumbent: Configuration,
+        incumbent: list[Configuration] | Configuration,
         ta_time_used: float,
         wallclock_time: float,
     ) -> None:
@@ -156,17 +156,19 @@ class TrajLogger(object):
         wallclock_time: float
             Wallclock time used so far
         """
-        conf = []
-        for p in incumbent:
-            if not incumbent.get(p) is None:
-                conf.append("%s='%s'" % (p, repr(incumbent[p])))
-        if isinstance(train_perf, float):
-            # Make it compatible with old format
-            with open(self.old_traj_fn, "a") as fp:
-                fp.write(
-                    f"{ta_time_used:f}, {train_perf:f}, {wallclock_time:f}, {incumbent_id:d}, "
-                    f"{wallclock_time - ta_time_used:f}, {','.join(conf):s}\n"
-                )
+        incumbent_list = incumbent if isinstance(incumbent, list) else [incumbent]
+        for incumbent in incumbent_list:
+            conf = []
+            for p in incumbent:
+                if not incumbent.get(p) is None:
+                    conf.append("%s='%s'" % (p, repr(incumbent[p])))
+            if isinstance(train_perf, float):
+                # Make it compatible with old format
+                with open(self.old_traj_fn, "a") as fp:
+                    fp.write(
+                        f"{ta_time_used:f}, {train_perf:f}, {wallclock_time:f}, {incumbent_id:d}, "
+                        f"{wallclock_time - ta_time_used:f}, {','.join(conf):s}\n"
+                    )
         else:
             # We recommend to use pandas to read this csv file
             with open(self.old_traj_fn, "a") as fp:
@@ -179,7 +181,7 @@ class TrajLogger(object):
         self,
         train_perf: Union[float, List[float]],
         incumbent_id: int,
-        incumbent: Configuration,
+        incumbent: list[Configuration] | Configuration,
         ta_time_used: float,
         wallclock_time: float,
     ) -> None:
@@ -198,23 +200,25 @@ class TrajLogger(object):
         wallclock_time: float
             Wallclock time used so far
         """
-        conf = []
-        for p in incumbent:
-            if not incumbent.get(p) is None:
-                conf.append("%s='%s'" % (p, repr(incumbent[p])))
+        incumbent_list = incumbent if isinstance(incumbent, list) else [incumbent]
+        for incumbent in incumbent_list:
+            conf = []
+            for p in incumbent:
+                if not incumbent.get(p) is None:
+                    conf.append("%s='%s'" % (p, repr(incumbent[p])))
 
-        traj_entry = {
-            "cpu_time": ta_time_used,
-            "wallclock_time": wallclock_time,
-            "evaluations": self.stats.finished_ta_runs,
-            "cost": format_array(train_perf, False),
-            "incumbent": conf,
-            "origin": incumbent.origin,
-        }
+            traj_entry = {
+                "cpu_time": ta_time_used,
+                "wallclock_time": wallclock_time,
+                "evaluations": self.stats.finished_ta_runs,
+                "cost": format_array(train_perf, False),
+                "incumbent": conf,
+                "origin": incumbent.origin,
+            }
 
-        with open(self.aclib_traj_fn, "a") as fp:
-            json.dump(traj_entry, fp)
-            fp.write("\n")
+            with open(self.aclib_traj_fn, "a") as fp:
+                json.dump(traj_entry, fp)
+                fp.write("\n")
 
     def _add_in_alljson_format(
         self,
@@ -242,19 +246,21 @@ class TrajLogger(object):
         wallclock_time: float
             Wallclock time used so far
         """
-        traj_entry = {
-            "cpu_time": ta_time_used,
-            "wallclock_time": wallclock_time,
-            "evaluations": self.stats.finished_ta_runs,
-            "cost": train_perf,
-            "incumbent": incumbent.get_dictionary(),
-            "budget": budget,
-            "origin": incumbent.origin,
-        }
+        incumbent_list = incumbent if isinstance(incumbent, list) else [incumbent]
+        for incumbent in incumbent_list:
+            traj_entry = {
+                "cpu_time": ta_time_used,
+                "wallclock_time": wallclock_time,
+                "evaluations": self.stats.finished_ta_runs,
+                "cost": train_perf,
+                "incumbent": incumbent.get_dictionary(),
+                "budget": budget,
+                "origin": incumbent.origin,
+            }
 
-        with open(self.alljson_traj_fn, "a") as fp:
-            json.dump(traj_entry, fp)
-            fp.write("\n")
+            with open(self.alljson_traj_fn, "a") as fp:
+                json.dump(traj_entry, fp)
+                fp.write("\n")
 
     @staticmethod
     def read_traj_alljson_format(
