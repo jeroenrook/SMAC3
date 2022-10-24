@@ -598,6 +598,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
         Parameters
         ----------
+        aggregate
         config : Configuration
             Configuration to calculate objective for.
         instance_seed_budget_keys : list, optional (default=None)
@@ -607,6 +608,9 @@ class RunHistory(Mapping[RunKey, RunValue]):
             Normalizes the costs wrt objective bounds in the multi-objective setting.
             Only a float is returned if normalize is True. Warning: The value can change
             over time because the objective bounds are changing.
+        qggregate: bool, optional (default=True)
+            Aggregate the objectives into a single scalar if true. Otherwise, the objective
+            values are returned separately in a list.
 
         Returns
         -------
