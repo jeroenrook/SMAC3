@@ -302,7 +302,7 @@ class SMSIntensifier(AbstractRacer):
 
         # LINES 3-7
         if self.stage in [IntensifierStage.RUN_FIRST_CONFIG, IntensifierStage.RUN_INCUMBENT]:
-            # TODO workaround to handle increasing the incumbant that consists out of multiple configurations
+            # CHANGED: workaround to handle increasing the incumbant that consists out of multiple configurations
             if len(self.remaining_incumbent_runs) > 0:
                 runinfo = self.remaining_incumbent_runs.pop()
                 return RunInfoIntent.RUN, runinfo
@@ -997,6 +997,12 @@ class SMSIntensifier(AbstractRacer):
             # pick next configuration from the generator
             try:
                 challenger = next(self.configs_to_run)
+                # TODO FOR DEBUG ONLY
+                try:
+                    ehvi = chooser.acquisition_func([challenger])[0]
+                except:
+                    ehvi = -1
+                self.stats.challenger_ehvi.append((challenger, ehvi))
             except StopIteration:
                 # out of challengers for the current iteration, start next incumbent iteration
                 self._next_iteration()

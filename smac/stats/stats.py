@@ -53,6 +53,8 @@ class Stats(object):
         self._EMA_ALPHA = 0.2
 
         self.population = [] #Type: List[Configuration]
+        self.acquisition_values = []
+        self.challenger_ehvi = []
 
         self._start_time = np.NaN
         self._logger = logging.getLogger(self.__module__ + "." + self.__class__.__name__)
@@ -68,7 +70,7 @@ class Stats(object):
         data = {}
 
         for v in vars(self):
-            if v not in ["_Stats__scenario", "_logger", "_start_time"]:
+            if v not in ["_Stats__scenario", "_logger", "_start_time", "acquisition_values", "challenger_ehvi"]:
                 data[v] = getattr(self, v)
 
         path = os.path.join(self.__scenario.output_dir_for_this_run, "stats.json")

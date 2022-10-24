@@ -691,6 +691,7 @@ class LocalAndSortedRandomSearch(AcquisitionFunctionMaximizer):
             "First 5 acq func (origin) values of selected configurations: %s",
             str([[_[0], _[1].origin] for _ in next_configs_by_acq_value[:5]]),
         )
+        stats.acquisition_values.append(np.array([t[0] for t in next_configs_by_acq_value]))  # TODO Debug
         return next_configs_by_acq_value
 
 
