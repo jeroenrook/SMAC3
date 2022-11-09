@@ -530,7 +530,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
         self.num_runs_per_config[config_id] = n_runs + 1
 
-    def get_cost(self, config: Configuration, aggregate: bool = True) -> float:
+    def get_cost(self, config: Configuration, aggregate: bool = True) -> float | np.ndarray:
         """Returns empirical cost for a configuration. See the class docstring for how the costs are
         computed. The costs are not re-computed, but are read from cache.
 

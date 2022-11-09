@@ -1,36 +1,43 @@
 # encoding=utf8
 import abc
+from abc import ABC
 from typing import Any, List, Tuple
+
+import copy
 import logging
 import sys
-import copy
 
+# import botorch
 import numpy as np
-from ConfigSpace.hyperparameters import FloatHyperparameter
-from scipy.stats import norm
-
 import pygmo
 import torch
-from torch import Tensor
-import botorch
-from botorch.models.model import Model
-from botorch.utils.multi_objective.box_decompositions.non_dominated import NondominatedPartitioning
 from botorch.acquisition.multi_objective import ExpectedHypervolumeImprovement
-#TODO import only used functions
+from botorch.models.model import Model
+from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+    NondominatedPartitioning,
+)
+from ConfigSpace.hyperparameters import FloatHyperparameter
+from scipy.stats import norm
+from torch import Tensor
 
 from smac.configspace import Configuration
 from smac.configspace.util import convert_configurations_to_array
 from smac.epm.base_epm import BaseEPM
-from smac.epm.multi_objective_epm import MultiObjectiveEPM
-from smac.utils.logging import PickableLoggerAdapter
-from smac.stats.stats import Stats
+
+# from smac.epm.multi_objective_epm import MultiObjectiveEPM
 from smac.runhistory.runhistory import RunHistory
+from smac.stats.stats import Stats
+from smac.utils.logging import PickableLoggerAdapter
+
+# TODO import only used functions
+
 
 __author__ = "Aaron Klein, Marius Lindauer"
 __copyright__ = "Copyright 2017, ML4AAD"
 __license__ = "3-clause BSD"
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
 
 class AbstractAcquisitionFunction(object, metaclass=abc.ABCMeta):
     """Abstract base class for acquisition function.
@@ -52,7 +59,7 @@ class AbstractAcquisitionFunction(object, metaclass=abc.ABCMeta):
         self.logger = PickableLoggerAdapter(self.__module__ + "." + self.__class__.__name__)
 
     def update(self, **kwargs: Any) -> None:
-        """ Update the acquisition function attributes required for calculation.
+        """Update the acquisition function attributes required for calculation.
 
         This method will be called after fitting the model, but before maximizing the acquisition
         function. As an examples, EI uses it to update the current fmin.
@@ -120,31 +127,29 @@ class AbstractAcquisitionFunction(object, metaclass=abc.ABCMeta):
 
 
 class _PosteriorProxy(object):
+    def __init__(self) -> None:
+        self.mean: Tensor = []
+        self.variance: Tensor = []
 
-    def __init__(self):
-        self.mean = []
-        self.variance = []
 
-class _ModelProxy(Model, object):
-
-    def __init__(self, model: MultiObjectiveEPM):
+class _ModelProxy(Model, ABC):
+    def __init__(self, model: BaseEPM):
         self.model = model
 
     def posterior(self, X: Tensor, **kwargs: Any) -> _PosteriorProxy:
+        """Docstring
+        X: A `b x q x d`-dim Tensor, where `d` is the dimension of the
+        feature space, `q` is the number of points considered jointly,
+        and `b` is the batch dimension.
+
+
+        A `Posterior` object, representing a batch of `b` joint distributions
+        over `q` points and `m` outputs each.
         """
-    X: A `b x q x d`-dim Tensor, where `d` is the dimension of the
-    feature space, `q` is the number of points considered jointly,
-    and `b` is the batch dimension.
-
-
-    A `Posterior` object, representing a batch of `b` joint distributions
-    over `q` points and `m` outputs each.
-        """
-
         assert X.shape[1] == 1
         X = X.reshape([X.shape[0], -1]).numpy()  # 3D -> 2D
 
-        #predict
+        # predict
         mean, var_ = self.model.predict_marginalized_over_instances(X)
         post = _PosteriorProxy()
         post.mean = torch.asarray(mean).reshape(X.shape[0], 1, -1)  # 2D -> 3D
@@ -154,8 +159,8 @@ class _ModelProxy(Model, object):
 
 
 class EHVI(AbstractAcquisitionFunction):
-    def __init__(self, model: MultiObjectiveEPM, stats: Stats, runhistory: RunHistory):
-        r"""Computes for a given x the expected hypervolume improvement as
+    def __init__(self, model: BaseEPM, stats: Stats, runhistory: RunHistory):
+        """Computes for a given x the expected hypervolume improvement as
         acquisition value.
 
         Parameters
@@ -185,7 +190,7 @@ class EHVI(AbstractAcquisitionFunction):
         hypervolume: float
         """
         hv = pygmo.hypervolume(points)
-        return hv.compute(hv.refpoint(offset=1)) #TODO: Fix reference points
+        return hv.compute(hv.refpoint(offset=1))  # TODO: Fix reference points
 
     def _compute(self, X: np.ndarray) -> np.ndarray:
         """Computes the EHVI values and its derivatives.
@@ -202,25 +207,26 @@ class EHVI(AbstractAcquisitionFunction):
         np.ndarray(N,1)
             Expected HV Improvement of X
         """
-
         if len(X.shape) == 1:
             X = X[:, np.newaxis]
 
         m, var_ = self.model.predict_marginalized_over_instances(X)
-        #Find a way to propagate the variance into the HV
-        std = np.sqrt(var_)
+        # Find a way to propagate the variance into the HV
+        # std = np.sqrt(var_)
 
         # Get points of population
         population_configs = [self.runhistory.ids_config[config_id] for config_id in self.stats.population]
         population_costs = [self.runhistory.get_cost(c, aggregate=False) for c in population_configs]
-        #TODO transform equally with RunHistory2EPM transform or de-transform the marginalized_performance_over_instances
+        # TODO transform with RunHistory2EPM transform or de-transform the marginalized_performance_over_instances
 
         # Compute HV
         # population_hv = self.get_hypervolume(population_costs)
 
-        #BOtorch EHVI implementation
+        # BOtorch EHVI implementation
         bomodel = _ModelProxy(self.model)
-        ref_point = pygmo.hypervolume(population_costs).refpoint(offset=1) #TODO get proper reference points from user/cutoffs
+        ref_point = pygmo.hypervolume(population_costs).refpoint(
+            offset=1
+        )  # TODO get proper reference points from user/cutoffs
         # ref_point = torch.asarray(ref_point)
         # TODO partition from all runs instead of only population?
         # TODO NondominatedPartitioning and ExpectedHypervolumeImprovement seem no too difficult to implement natively
@@ -233,17 +239,16 @@ class EHVI(AbstractAcquisitionFunction):
         # print(improvements.max())
         return improvements
 
-
         # TODO non-dominated sorting of costs. Compute EHVI only until the EHVI is not expected to improve anymore.
         # Option 1: Supplement missing instances of population with acq. function to get predicted performance over
-        # all instances. Idea is that this prevents optimizing for the initial instances which get it stuck in local optima
+        # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
         # Option 2: Only on instances of population
         # Option 3: EVHI per instance and aggregate afterwards
-        ehvi = np.zeros(len(X))
-        for i, indiv in enumerate(m):
-            ehvi[i] = self.get_hypervolume(population_costs + [indiv]) - population_hv
-
-        return ehvi.reshape(-1, 1)
+        # ehvi = np.zeros(len(X))
+        # for i, indiv in enumerate(m):
+        #     ehvi[i] = self.get_hypervolume(population_costs + [indiv]) - population_hv
+        #
+        # return ehvi.reshape(-1, 1)
 
 
 class IntegratedAcquisitionFunction(AbstractAcquisitionFunction):
@@ -376,11 +381,11 @@ class PriorAcquisitionFunction(AbstractAcquisitionFunction):
         self.iteration_number = 0
 
     def update(self, **kwargs: Any) -> None:
-        """update the acquisition function attributes required for calculation.
+        """Update the acquisition function attributes required for calculation.
 
         updates the model, the accompanying acquisition function and tracks the iteration number.
 
-        parameters
+        Parameters
         ----------
         kwargs
             additional keyword arguments

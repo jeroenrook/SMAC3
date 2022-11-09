@@ -1,5 +1,5 @@
 import abc
-from typing import Callable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Callable, Iterator, List, Optional, Tuple, Union
 
 import copy
 import itertools
@@ -482,7 +482,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         return [(a, i) for a, i in zip(acq_val_candidates, candidates)]
 
     @staticmethod
-    def _unique_list(elements: list) -> list:
+    def _unique_list(elements: Union[list, itertools.chain]) -> list:
         """
         Returns the list with only unique elements while remaining the list order.
 
@@ -492,7 +492,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
 
         Returns
         -------
-
+        A list with unique elements
         """
         return_list = []
         return_list_as_set = set()
@@ -505,17 +505,16 @@ class LocalSearch(AcquisitionFunctionMaximizer):
 
 
 class MOLocalSearch(LocalSearch):
-
     def _get_initial_points(
-            self,
-            num_points: int,
-            runhistory: RunHistory,
-            stats: Stats,
-            additional_start_points: Optional[List[Tuple[float, Configuration]]],
+        self,
+        num_points: int,
+        runhistory: RunHistory,
+        stats: Stats,
+        additional_start_points: Optional[List[Tuple[float, Configuration]]],
     ) -> List[Configuration]:
         init_points = super()._get_initial_points(num_points, runhistory, stats, additional_start_points)
 
-        #Add population to Local search
+        # Add population to Local search
         if len(stats.population) > 0:
             population = [runhistory.ids_config[confid] for confid in stats.population]
             init_points = self._unique_list(itertools.chain(population, init_points))
@@ -560,11 +559,11 @@ class MOLocalSearch(LocalSearch):
             # (for example multi-objective or EIPS) we sort here based on the dominance order. In each front
             # configurations are sorted on the number of points they dominate overall.
             # Perform ND sorting
-            sort_objectives = costs.flatten()
+            sort_objectives = [costs.flatten()]
             if len(costs.shape) == 2 and costs.shape[1] > 1:
                 _, domination_list, _, non_domination_rank = fast_non_dominated_sorting(costs)
                 domination_list = [len(i) for i in domination_list]
-                sort_objectives = (domination_list, non_domination_rank) # Last column is primary sort key!
+                sort_objectives = [domination_list, non_domination_rank]  # Last column is primary sort key!
 
             # From here
             # http://stackoverflow.com/questions/20197990/how-to-make-argsort-result-to-be-random-between-equal-values
@@ -797,12 +796,11 @@ class LocalAndSortedRandomSearch(AcquisitionFunctionMaximizer):
             "First 5 acq func (origin) values of selected configurations: %s",
             str([[_[0], _[1].origin] for _ in next_configs_by_acq_value[:5]]),
         )
-        stats.acquisition_values.append([t[0] for t in next_configs_by_acq_value])  # TODO Debug
+        # stats.acquisition_values.append([t[0] for t in next_configs_by_acq_value])  # TODO Debug
         return next_configs_by_acq_value
 
 
 class MOLocalAndSortedRandomSearch(LocalAndSortedRandomSearch):
-
     def __init__(
         self,
         acquisition_function: AbstractAcquisitionFunction,
@@ -812,12 +810,7 @@ class MOLocalAndSortedRandomSearch(LocalAndSortedRandomSearch):
         n_steps_plateau_walk: int = 10,
         n_sls_iterations: int = 10,
     ):
-        super().__init__(acquisition_function,
-                                                   config_space,
-                                                   rng,
-                                                   max_steps,
-                                                   n_steps_plateau_walk,
-                                                   n_sls_iterations)
+        super().__init__(acquisition_function, config_space, rng, max_steps, n_steps_plateau_walk, n_sls_iterations)
 
         self.local_search = MOLocalSearch(
             acquisition_function=acquisition_function,
