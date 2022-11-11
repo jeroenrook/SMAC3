@@ -124,7 +124,7 @@ class MultiObjectiveEPM(BaseEPM):
         if len(self.estimators) == 0:
             raise ValueError("The list of estimators for this model is empty!")
         for i, estimator in enumerate(self.estimators):
-            estimator.train(X, Y[:, i])
+            estimator._train(X, Y[:, i])  # Preprocessing in train is done by self, go directly to _train
 
         return self
 
