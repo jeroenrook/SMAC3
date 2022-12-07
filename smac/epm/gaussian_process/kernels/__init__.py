@@ -1,7 +1,7 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any,  Callable,  Dict,  List,  Optional,  Tuple,  Union
 
 import math
-from inspect import Signature, signature
+from inspect import Signature,  signature
 
 import numpy as np
 import scipy.optimize
@@ -11,11 +11,11 @@ import sklearn.gaussian_process.kernels as kernels
 
 from smac.epm.gaussian_process.utils.prior import Prior
 
-__copyright__ = "Copyright 2021, AutoML.org Freiburg-Hannover"
+__copyright__ = "Copyright 2021,  AutoML.org Freiburg-Hannover"
 __license__ = "3-clause BSD"
 
 
-def get_conditional_hyperparameters(X: np.ndarray, Y: Optional[np.ndarray] = None) -> np.ndarray:
+def get_conditional_hyperparameters(X: np.ndarray,  Y: Optional[np.ndarray] = None) -> np.ndarray:
     """Returns conditional hyperparameters."""
     # Taking care of conditional hyperparameters according to Levesque et al.
     X_cond = X <= -1
@@ -23,73 +23,73 @@ def get_conditional_hyperparameters(X: np.ndarray, Y: Optional[np.ndarray] = Non
         Y_cond = Y <= -1
     else:
         Y_cond = X <= -1
-    active = ~((np.expand_dims(X_cond, axis=1) != Y_cond).any(axis=2))
+    active = ~((np.expand_dims(X_cond,  axis=1) != Y_cond).any(axis=2))
     return active
 
 
 class MagicMixin:
     # This is a mixin for a kernel to override functions of the kernel.
-    # Because it overrides functions of the kernel, it needs to be placed first in the inheritance
+    # Because it overrides functions of the kernel,  it needs to be placed first in the inheritance
     # hierarchy. For this reason it is not possible to subclass the
     # Mixin from the kernel class because this will prevent it from being instantiatable.
-    # Therefore, mypy won't know about anything related to the superclass and I had
+    # Therefore,  mypy won't know about anything related to the superclass and I had
     # to add a few type:ignore statements when accessing a member that is declared in the
-    # superclass such as self.has_conditions, self._call, super().get_params etc.
+    # superclass such as self.has_conditions,  self._call,  super().get_params etc.
 
     prior = None  # type: Optional[Prior]
 
     def __call__(
-        self,
-        X: np.ndarray,
-        Y: Optional[np.ndarray] = None,
-        eval_gradient: bool = False,
-        active: Optional[np.ndarray] = None,
-    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        self, 
+        X: np.ndarray, 
+        Y: Optional[np.ndarray] = None, 
+        eval_gradient: bool = False, 
+        active: Optional[np.ndarray] = None, 
+    ) -> Union[np.ndarray,  Tuple[np.ndarray,  np.ndarray]]:
         """Call the kernel function."""
         if active is None and self.has_conditions:  # type: ignore[attr-defined] # noqa F821
             if self.operate_on is None:
-                active = get_conditional_hyperparameters(X, Y)
+                active = get_conditional_hyperparameters(X,  Y)
             else:
                 if Y is None:
-                    active = get_conditional_hyperparameters(X[:, self.operate_on], None)
+                    active = get_conditional_hyperparameters(X[:,  self.operate_on],  None)
                 else:
-                    active = get_conditional_hyperparameters(X[:, self.operate_on], Y[:, self.operate_on])
+                    active = get_conditional_hyperparameters(X[:,  self.operate_on],  Y[:,  self.operate_on])
 
         if self.operate_on is None:
-            rval = self._call(X, Y, eval_gradient, active)  # type: ignore[attr-defined] # noqa F821
+            rval = self._call(X,  Y,  eval_gradient,  active)  # type: ignore[attr-defined] # noqa F821
         else:
             if self.len_active is None:
                 raise RuntimeError("len_active is not set.")
 
             if Y is None:
                 rval = self._call(  # type: ignore[attr-defined] # noqa F821
-                    X=X[:, self.operate_on].reshape([-1, self.len_active]),
-                    Y=None,
-                    eval_gradient=eval_gradient,
-                    active=active,
+                    X=X[:,  self.operate_on].reshape([-1,  self.len_active]), 
+                    Y=None, 
+                    eval_gradient=eval_gradient, 
+                    active=active, 
                 )
-                X = X[:, self.operate_on].reshape((-1, self.len_active))
+                X = X[:,  self.operate_on].reshape((-1,  self.len_active))
             else:
                 rval = self._call(  # type: ignore[attr-defined] # noqa F821
-                    X=X[:, self.operate_on].reshape([-1, self.len_active]),
-                    Y=Y[:, self.operate_on].reshape([-1, self.len_active]),
-                    eval_gradient=eval_gradient,
-                    active=active,
+                    X=X[:,  self.operate_on].reshape([-1,  self.len_active]), 
+                    Y=Y[:,  self.operate_on].reshape([-1,  self.len_active]), 
+                    eval_gradient=eval_gradient, 
+                    active=active, 
                 )
-                X = X[:, self.operate_on].reshape((-1, self.len_active))
-                Y = Y[:, self.operate_on].reshape((-1, self.len_active))
+                X = X[:,  self.operate_on].reshape((-1,  self.len_active))
+                Y = Y[:,  self.operate_on].reshape((-1,  self.len_active))
 
         return rval
 
-    def __add__(self, b: Union[kernels.Kernel, float]) -> kernels.Sum:
-        if not isinstance(b, kernels.Kernel):
-            return Sum(self, ConstantKernel(b))
-        return Sum(self, b)
+    def __add__(self,  b: Union[kernels.Kernel,  float]) -> kernels.Sum:
+        if not isinstance(b,  kernels.Kernel):
+            return Sum(self,  ConstantKernel(b))
+        return Sum(self,  b)
 
-    def __radd__(self, b: Union[kernels.Kernel, float]) -> kernels.Sum:
-        if not isinstance(b, kernels.Kernel):
-            return Sum(ConstantKernel(b), self)
-        return Sum(b, self)
+    def __radd__(self,  b: Union[kernels.Kernel,  float]) -> kernels.Sum:
+        if not isinstance(b,  kernels.Kernel):
+            return Sum(ConstantKernel(b),  self)
+        return Sum(b,  self)
 
     def __mul__(self, b: Union[kernels.Kernel, float]) -> kernels.Product:
         if not isinstance(b, kernels.Kernel):

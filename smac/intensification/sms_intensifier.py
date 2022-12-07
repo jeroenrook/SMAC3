@@ -26,6 +26,9 @@ from smac.utils.constants import MAXINT
 from smac.utils.io.traj_logging import TrajLogger
 from smac.utils.logging import format_array
 
+#DEBUG
+import matplotlib.pyplot as plt
+
 __author__ = "Katharina Eggensperger, Marius Lindauer"
 __copyright__ = "Copyright 2018, ML4AAD"
 __license__ = "3-clause BSD"
@@ -305,6 +308,8 @@ class SMSIntensifier(AbstractRacer):
             # CHANGED: workaround to handle increasing the incumbant that consists out of multiple configurations
             if len(self.remaining_incumbent_runs) > 0:
                 runinfo = self.remaining_incumbent_runs.pop()
+                if self.stage == IntensifierStage.RUN_INCUMBENT:
+                    self.stage = IntensifierStage.PROCESS_INCUMBENT_RUN
                 return RunInfoIntent.RUN, runinfo
 
             else:
@@ -339,6 +344,8 @@ class SMSIntensifier(AbstractRacer):
                         self.remaining_incumbent_runs.append(runinfo)
 
                     runinfo = self.remaining_incumbent_runs.pop()
+                    if self.stage == IntensifierStage.RUN_INCUMBENT:
+                        self.stage = IntensifierStage.PROCESS_INCUMBENT_RUN
                     return RunInfoIntent.RUN, runinfo
                 else:
                     # This point marks the transitions from lines 3-7
@@ -382,7 +389,7 @@ class SMSIntensifier(AbstractRacer):
             )
 
         # Skip the iteration if the challenger was previously run
-        if challenger == incumbent and self.stage == IntensifierStage.RUN_CHALLENGER:
+        if challenger in incumbent and self.stage == IntensifierStage.RUN_CHALLENGER:
             self.challenger_same_as_incumbent = True
             self.logger.debug("Challenger was the same as the current incumbent; Skipping challenger")
             return RunInfoIntent.SKIP, RunInfo(
@@ -706,7 +713,7 @@ class SMSIntensifier(AbstractRacer):
         # self.logger.info(f"Updated estimated cost of incumbent on {len(inc_runs)} runs: {format_value}")
 
         # if running first configuration, go to next stage after 1st run
-        # TODO: Changed logic to support the running of an incumbent that consists out of multiple configurations
+        # CHANGED: logic to support the running of an incumbent that consists of multiple configurations
         if self.stage in [
             IntensifierStage.RUN_FIRST_CONFIG,
             IntensifierStage.PROCESS_FIRST_CONFIG_RUN,
@@ -854,7 +861,17 @@ class SMSIntensifier(AbstractRacer):
 
             # update intensification stage
             # CHANGED
-            if challenger not in new_incumbent:
+            if new_incumbent is None:  # Line 17
+                # challenger is not worse, continue
+                self.N = 2 * self.N
+                self.continue_challenger = True
+                self.logger.debug(
+                    "Estimated cost of challenger on %d runs: %.4f, adding %d runs to the queue",
+                    len(chal_runs),
+                    chal_perf,
+                    self.N / 2,
+                )
+            elif challenger not in new_incumbent:
                 # move on to the next iteration
                 self.stage = IntensifierStage.RUN_INCUMBENT
                 self.continue_challenger = False
@@ -863,7 +880,7 @@ class SMSIntensifier(AbstractRacer):
                     len(chal_runs),
                     chal_perf,
                 )
-            elif challenger in new_incumbent:
+            else:  # challenger in new_incumbent:
                 # New incumbent found
                 incumbent = new_incumbent
                 self.continue_challenger = False
@@ -877,16 +894,7 @@ class SMSIntensifier(AbstractRacer):
                     len(chal_runs),
                     chal_perf,
                 )
-            else:  # Line 17
-                # challenger is not worse, continue
-                self.N = 2 * self.N
-                self.continue_challenger = True
-                self.logger.debug(
-                    "Estimated cost of challenger on %d runs: %.4f, adding %d runs to the queue",
-                    len(chal_runs),
-                    chal_perf,
-                    self.N / 2,
-                )
+
         else:
             self.logger.debug(
                 "Estimated cost of challenger on %d runs: %.4f, still %d runs to go (continue racing)",
@@ -1071,6 +1079,7 @@ class SMSIntensifier(AbstractRacer):
         self.stats.update_average_configs_per_intensify(n_configs=self._chall_indx)
 
     def _get_hypervolume(self, points: np.ndarray, reference_point: np.ndarray = None):
+        print(points, reference_point)
         if reference_point is None:
             reference_point = np.max(points, axis=0)
         return hypervolume(points).compute(reference_point)
@@ -1108,7 +1117,6 @@ class SMSIntensifier(AbstractRacer):
         -------
         None or better of the two configurations x,y
         """
-        #TODO JG: CHANGE HERE COMPARISON AGAINST POPULATION
         #TODO JG: Assuming that all incumbents ran on the same instance+seed
         inc_runs = run_history.get_runs_for_config(incumbent[0], only_max_observed_budget=True)
         chall_runs = run_history.get_runs_for_config(challenger, only_max_observed_budget=True)
@@ -1116,13 +1124,20 @@ class SMSIntensifier(AbstractRacer):
 
         # performance on challenger runs, the challenger only becomes incumbent
         # if it dominates the incumbent
+
         chal_perf = run_history.average_cost(challenger, to_compare_runs, normalize=True, aggregate=False)
         inc_perf = []
         for inc in incumbent:
             inc_perf.append(run_history.average_cost(inc, to_compare_runs, normalize=True, aggregate=False))
 
-        # reference_point = np.array([bound[1] for bound in run_history.objective_bounds])
-        reference_point = np.full(len(run_history.objective_bounds), 1.1)  # TODO assuming normalized objectives
+        print(f"{run_history.objective_bounds = }")
+        print(f"{np.array([chal_perf]+inc_perf) = }")
+
+        #reference_point = np.array([bound[1]+1e-9 for bound in run_history.objective_bounds])
+        reference_point = np.array([1+1e-9 for bound in run_history.objective_bounds])
+        # ref_point = np.array(inc_perf + [chal_perf]).max(axis=0) + 0.1
+        # print(f"{ref_point =}")
+        # reference_point = np.full(run_history.num_obj, ref_point)  # TODO assuming normalized objectives
 
         # below min pop size -> unconditionally accept
         # above max pop size -> drop the one that contributes the least to HV
@@ -1148,6 +1163,35 @@ class SMSIntensifier(AbstractRacer):
         #   else -> reject challenger
         # TODO: add logger messages
         # TODO: trajectory logger
+
+        #DEGUB
+        # fig, ax = plt.subplots(1, 1)
+        #
+        # costs = np.vstack([v[0] for v in run_history.data.values()])
+        # color = "blue"
+        # # for id, p in enumerate(costs):
+        # #     ax.text(*p, f"{id}", c=color)
+        #
+        # ax.scatter(*costs.T, label="runhistory", alpha=0.2, c=color, marker="x")
+        #
+        # points = []
+        # incumbent = incumbent if isinstance(incumbent, list) else [incumbent]
+        # for conf in incumbent:
+        #     points.append(run_history.average_cost(conf, normalize=False, aggregate=False))
+        # points = np.array(points)
+        # ax.scatter(*points.T, label=f"incumbent ({len(incumbent)})", c=color)
+        #
+        # ax.scatter([chal_perf[0]], [chal_perf[1]], label="challenger", c="orange")
+        #
+        # ax.legend()
+        # #ax.set_xlim((0, min(10, ref_points[problem][0])))
+        # #ax.set_ylim((0, min(10, ref_points[problem][1])))
+        # ax.set_title(f"TA runs {self.stats.finished_ta_runs}")
+        # ax.set_xlabel("y1")
+        # ax.set_ylabel("y2")
+        # plt.tight_layout()
+        # plt.show()
+
         if len(incumbent) < self.minimum_population_size:
             if not set(inc_runs) - set(chall_runs):
                 self.logger.debug(
@@ -1163,7 +1207,7 @@ class SMSIntensifier(AbstractRacer):
                         incumbent_id=self.stats.inc_changed,
                         incumbent=incumbent,
                     )
-
+                self.plot_incumbent([challenger] + incumbent, run_history)
                 return [challenger] + incumbent  # accept challenger
             else:
                 return None  # continue intensification
@@ -1173,12 +1217,13 @@ class SMSIntensifier(AbstractRacer):
             incumbent = [challenger] + incumbent
             performances = np.array([chal_perf] + inc_perf)  # Challenger index = 0
             mask = np.ones(len(performances), dtype=bool)
-            hypervolumes = np.zeros(len(performances), dtype=bool)
+
+            hypervolumes = np.zeros(len(performances))
             for point in range(len(performances)):
                 mask[point] = False
                 hypervolumes[point] = hypervolume(performances[mask, :]).compute(ref_point=reference_point)
                 mask[point] = True
-            worst_point = np.argmin(hypervolumes)
+            worst_point = np.argmax(hypervolumes)  # Get the point (which is removed) where the HV is the highest
             del incumbent[worst_point]
 
             if challenger not in incumbent:
@@ -1203,6 +1248,7 @@ class SMSIntensifier(AbstractRacer):
                             incumbent_id=self.stats.inc_changed,
                             incumbent=incumbent,
                         )
+                    self.plot_incumbent(incumbent, run_history)
                     return incumbent  # accept challenger
                 else:
                     return None  # continue intensification
@@ -1243,6 +1289,7 @@ class SMSIntensifier(AbstractRacer):
                             incumbent_id=self.stats.inc_changed,
                             incumbent=incumbent,
                         )
+                    self.plot_incumbent(incumbent, run_history)
                     return incumbent  # accept challenger
                 else:
                     return None  # continue intensification
@@ -1252,3 +1299,33 @@ class SMSIntensifier(AbstractRacer):
                     f"on {len(chall_runs)} runs."
                 )
                 return incumbent  # reject challenger
+
+    def plot_incumbent(self, incumbent, runhistory):
+        """
+        Debug
+
+        Parameters
+        ----------
+        incumbent
+        runhistory
+
+        Returns
+        -------
+
+        """
+        return
+        costs = []
+        text = []
+        for config in incumbent:
+            config_id = runhistory.config_ids[config]
+
+            cost = runhistory.average_cost(config, normalize=False, aggregate=False)
+            nruns = len(runhistory.get_runs_for_config(config, only_max_observed_budget=True))
+            costs.append(cost)
+            text.append({"x": cost[0], "y": cost[1], "s": f"{config_id} ({nruns})"})
+        points = np.array(costs)
+        plt.title(f"{self.stats.finished_ta_runs = }")
+        plt.scatter(*points.T)
+        for t in text:
+            plt.text(**t)
+        plt.show()

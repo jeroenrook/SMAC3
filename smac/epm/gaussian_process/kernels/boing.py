@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any,  Dict,  Optional,  Tuple,  Union
 
 import copy
 import math
@@ -7,139 +7,139 @@ import gpytorch
 import numpy as np
 import torch
 from gpytorch import settings
-from gpytorch.kernels import Kernel, MaternKernel, ProductKernel, ScaleKernel
+from gpytorch.kernels import Kernel,  MaternKernel,  ProductKernel,  ScaleKernel
 from gpytorch.lazy import (
-    DiagLazyTensor,
-    MatmulLazyTensor,
-    PsdSumLazyTensor,
-    RootLazyTensor,
-    delazify,
+    DiagLazyTensor, 
+    MatmulLazyTensor, 
+    PsdSumLazyTensor, 
+    RootLazyTensor, 
+    delazify, 
 )
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.means.mean import Mean
 from gpytorch.utils.cholesky import psd_safe_cholesky
 from sklearn.gaussian_process.kernels import Kernel as SKLKernels
 
-from smac.epm.gaussian_process.kernels import ConstantKernel, WhiteKernel
+from smac.epm.gaussian_process.kernels import ConstantKernel,  WhiteKernel
 
 
 class MixedKernel(ProductKernel):
     """
     A special form of ProductKernel. It is composed of a cont_kernel and a cat_kernel that work with continuous and
-    categorical parameters, respectively. Its forward pass allows an additional parameter to determine if only
+    categorical parameters,  respectively. Its forward pass allows an additional parameter to determine if only
     cont_kernel is applied to the input.
     """
 
-    def __init__(self, cont_kernel: Kernel, cat_kernel: Kernel):
-        kernels = cont_kernel.kernels if isinstance(cont_kernel, ProductKernel) else [cont_kernel]
-        kernels += cat_kernel.kernels if isinstance(cat_kernel, ProductKernel) else [cat_kernel]
+    def __init__(self,  cont_kernel: Kernel,  cat_kernel: Kernel):
+        kernels = cont_kernel.kernels if isinstance(cont_kernel,  ProductKernel) else [cont_kernel]
+        kernels += cat_kernel.kernels if isinstance(cat_kernel,  ProductKernel) else [cat_kernel]
         super().__init__(*kernels)
         self.cont_kernel = cont_kernel
         self.cat_kernel = cat_kernel
 
     def forward(
-        self, x1: torch.Tensor, x2: torch.Tensor, diag: bool = False, cont_only: bool = False, **params: Any
+        self,  x1: torch.Tensor,  x2: torch.Tensor,  diag: bool = False,  cont_only: bool = False,  **params: Any
     ) -> gpytorch.lazy.LazyTensor:
-        """Compute kernel values, if cont_only is True, then the categorical kernel is omitted"""
+        """Compute kernel values,  if cont_only is True,  then the categorical kernel is omitted"""
         if not cont_only:
-            return super().forward(x1, x2, diag, **params)
+            return super().forward(x1,  x2,  diag,  **params)
         else:
-            return self.cont_kernel(x1, x2, diag, **params)
+            return self.cont_kernel(x1,  x2,  diag,  **params)
 
 
 def construct_gp_kernel(
-    kernel_kwargs: Dict[str, Any], cont_dims: np.ndarray, cat_dims: np.ndarray
-) -> Union[Kernel, SKLKernels]:
+    kernel_kwargs: Dict[str,  Any],  cont_dims: np.ndarray,  cat_dims: np.ndarray
+) -> Union[Kernel,  SKLKernels]:
     """
-    Construct a GP kernel with the given kernel init argument, the cont_dims, and cat_dims of the problem. Since the
+    Construct a GP kernel with the given kernel init argument,  the cont_dims,  and cat_dims of the problem. Since the
     subspace might not have the same number of dimensions as the global search space.
     We need to reconstruct the kernel every time when a new subspace is generated.
 
     Parameters
     ----------
-    kernel_kwargs: Dict[str, Any]
+    kernel_kwargs: Dict[str,  Any]
         kernel kwargs. Arguments to initialize the kernels. It needs to contain the following items:
             cont_kernel: type of continuous kernels
-            cont_kernel_kwargs: additional arguments for continuous kernels, for instance, length constraints and prior
+            cont_kernel_kwargs: additional arguments for continuous kernels,  for instance,  length constraints and prior
             cat_kernel: type of categorical kernels
-            cat_kernel_kwargs: additional arguments for categorical kernels, for instance, length constraints and prior
+            cat_kernel_kwargs: additional arguments for categorical kernels,  for instance,  length constraints and prior
             scale_kernel: type of scale kernels
-            scale_kernel_kwargs: additional arguments for scale kernels,  for instance, length constraints and prior
+            scale_kernel_kwargs: additional arguments for scale kernels,   for instance,  length constraints and prior
     cont_dims: np.ndarray
         dimensions of continuous hyperparameters
     cat_dims: np.ndarray
         dimensions of categorical hyperparameters
     Returns
     -------
-    kernel: Union[Kernel, SKLKernels]
+    kernel: Union[Kernel,  SKLKernels]
         constructed kernels
 
     """
     if len(cont_dims) > 0:
-        cont_kernel_class = kernel_kwargs.get("cont_kernel", MaternKernel)
-        cont_kernel_kwargs = kernel_kwargs.get("cont_kernel_kwargs", {})
+        cont_kernel_class = kernel_kwargs.get("cont_kernel",  MaternKernel)
+        cont_kernel_kwargs = kernel_kwargs.get("cont_kernel_kwargs",  {})
         cont_kernel = cont_kernel_class(
-            ard_num_dims=cont_dims.shape[-1], active_dims=tuple(cont_dims), **cont_kernel_kwargs
+            ard_num_dims=cont_dims.shape[-1],  active_dims=tuple(cont_dims),  **cont_kernel_kwargs
         ).double()
 
     if len(cat_dims) > 0:
-        cat_kernel_class = kernel_kwargs.get("cat_kernel", MaternKernel)
-        cat_kernel_kwargs = kernel_kwargs.get("cat_kernel_kwargs", {})
+        cat_kernel_class = kernel_kwargs.get("cat_kernel",  MaternKernel)
+        cat_kernel_kwargs = kernel_kwargs.get("cat_kernel_kwargs",  {})
         cat_kernel = cat_kernel_class(
-            ard_num_dims=cat_dims.shape[-1], active_dims=tuple(cat_dims), **cat_kernel_kwargs
+            ard_num_dims=cat_dims.shape[-1],  active_dims=tuple(cat_dims),  **cat_kernel_kwargs
         ).double()
 
     if len(cont_dims) > 0 and len(cat_dims) > 0:
-        if isinstance(cont_kernel, SKLKernels):
+        if isinstance(cont_kernel,  SKLKernels):
             base_kernel = cont_kernel * cat_kernel
         else:
-            base_kernel = MixedKernel(cont_kernel=cont_kernel, cat_kernel=cat_kernel)
+            base_kernel = MixedKernel(cont_kernel=cont_kernel,  cat_kernel=cat_kernel)
     elif len(cont_dims) > 0 and len(cat_dims) == 0:
         base_kernel = cont_kernel
     elif len(cont_dims) == 0 and len(cat_dims) > 0:
         base_kernel = cat_kernel
     else:
         raise ValueError("Either cont_dims or cat_dims must exist!")
-    if isinstance(base_kernel, SKLKernels):
-        scale_kernel_class = kernel_kwargs.get("scale_kernel", ConstantKernel)
-        scale_kernel_kwargs = kernel_kwargs.get("scale_kernel_kwargs", {})
+    if isinstance(base_kernel,  SKLKernels):
+        scale_kernel_class = kernel_kwargs.get("scale_kernel",  ConstantKernel)
+        scale_kernel_kwargs = kernel_kwargs.get("scale_kernel_kwargs",  {})
         scale_kernel = scale_kernel_class(**scale_kernel_kwargs)
 
-        noise_kernel_class = kernel_kwargs.get("noise_kernel", WhiteKernel)
-        noise_kernel_kwargs = kernel_kwargs.get("noise_kernel_kwargs", {})
+        noise_kernel_class = kernel_kwargs.get("noise_kernel",  WhiteKernel)
+        noise_kernel_kwargs = kernel_kwargs.get("noise_kernel_kwargs",  {})
         noise_kernel = noise_kernel_class(**noise_kernel_kwargs)
 
         gp_kernel = scale_kernel * base_kernel + noise_kernel
     else:
-        scale_kernel_class = kernel_kwargs.get("scale_kernel", ScaleKernel)
-        scale_kernel_kwargs = kernel_kwargs.get("scale_kernel_kwargs", {})
-        gp_kernel = scale_kernel_class(base_kernel=base_kernel, **scale_kernel_kwargs)
+        scale_kernel_class = kernel_kwargs.get("scale_kernel",  ScaleKernel)
+        scale_kernel_kwargs = kernel_kwargs.get("scale_kernel_kwargs",  {})
+        gp_kernel = scale_kernel_class(base_kernel=base_kernel,  **scale_kernel_kwargs)
     return gp_kernel
 
 
 class FITCKernel(Kernel):
     def __init__(
-        self,
-        base_kernel: Kernel,
-        X_inducing: torch.Tensor,
-        likelihood: GaussianLikelihood,
-        X_out: torch.Tensor,
-        y_out: torch.Tensor,
-        active_dims: Optional[Tuple[int]] = None,
+        self, 
+        base_kernel: Kernel, 
+        X_inducing: torch.Tensor, 
+        likelihood: GaussianLikelihood, 
+        X_out: torch.Tensor, 
+        y_out: torch.Tensor, 
+        active_dims: Optional[Tuple[int]] = None, 
     ):
         r"""A reimplementation of FITC Kernel that computes the posterior explicitly for globally augmented local GP.
         This should work exactly the same as a gpytorch.kernel.InducingPointKernel.
-         However, it takes much less time when combined with LGPGA.
+         However,  it takes much less time when combined with LGPGA.
          References: Edward Snelson and Zoubin Ghahramani. Sparse Gaussian processes using pseudo-inputs. Advances in
-         Neural Information Processing Systems 18, Cambridge, Massachusetts, 2006. The MIT Press.
+         Neural Information Processing Systems 18,  Cambridge,  Massachusetts,  2006. The MIT Press.
          https://papers.nips.cc/paper/2005/hash/4491777b1aa8b5b32c2e8666dbe1a495-Abstract.html
 
         Mean value is computed with:
-        \mathbf{\mu_{l'}}  = \mathbf{K_{l',u} \Sigma K_{u,1} \Lambda}^{-1}\mathbf{y_g} \label{eq:mean_sgp}
+        \mathbf{\mu_{l'}}  = \mathbf{K_{l', u} \Sigma K_{u, 1} \Lambda}^{-1}\mathbf{y_g} \label{eq:mean_sgp}
         and variance value:
-        \mathbf{\sigma}^2_{l'} = \mathbf{K_{l',l'}} - \mathbf{Q_{l', l'} + \mathbf{K_{l', u}\Sigma K_{u, l'}}}
-        \mathbf{\Sigma} = (\mathbf{K_{u,u}} + \mathbf{K_{u, g} \Lambda}^{-1}\mathbf{K_{g,u}})^{-1}
-        \mathbf{\Lambda} = diag[\mathbf{K_{g,g}-Q_{g,g}} + \sigma^2_{noise}\idenmat]
+        \mathbf{\sigma}^2_{l'} = \mathbf{K_{l', l'}} - \mathbf{Q_{l',  l'} + \mathbf{K_{l',  u}\Sigma K_{u,  l'}}}
+        \mathbf{\Sigma} = (\mathbf{K_{u, u}} + \mathbf{K_{u,  g} \Lambda}^{-1}\mathbf{K_{g, u}})^{-1}
+        \mathbf{\Lambda} = diag[\mathbf{K_{g, g}-Q_{g,g}} + \sigma^2_{noise}\idenmat]
         ----------
         base_kernel: Kernel
             base kernel function

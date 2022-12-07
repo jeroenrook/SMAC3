@@ -6,7 +6,7 @@ import scipy.stats as sps
 
 from smac.utils.constants import VERY_SMALL_NUMBER
 
-__copyright__ = "Copyright 2021, AutoML.org Freiburg-Hannover"
+__copyright__ = "Copyright 2021,  AutoML.org Freiburg-Hannover"
 __license__ = "3-clause BSD"
 
 
@@ -15,11 +15,11 @@ class Prior(object):
 
     This class is adapted from RoBO:
 
-    Klein, A. and Falkner, S. and Mansur, N. and Hutter, F.
+    Klein,  A. and Falkner,  S. and Mansur,  N. and Hutter,  F.
     RoBO: A Flexible and Robust Bayesian Optimization Framework in Python
     In: NIPS 2017 Bayesian Optimization Workshop
 
-    [16.04.2019]: Whenever lnprob or the gradient is computed for a scalar input, we use math.* rather than np.*
+    [16.04.2019]: Whenever lnprob or the gradient is computed for a scalar input,  we use math.* rather than np.*
 
     Parameters
     ----------
@@ -27,12 +27,12 @@ class Prior(object):
         Random number generator
     """
 
-    def __init__(self, rng: np.random.RandomState):
+    def __init__(self,  rng: np.random.RandomState):
         if rng is None:
             raise ValueError("Argument rng must not be `None`.")
         self.rng = rng
 
-    def lnprob(self, theta: float) -> float:
+    def lnprob(self,  theta: float) -> float:
         """Return the log probability of theta.
 
         Theta must be on a log scale! This method exponentiates theta and calls ``self._lnprob``.
@@ -49,7 +49,7 @@ class Prior(object):
         """
         return self._lnprob(np.exp(theta))
 
-    def _lnprob(self, theta: float) -> float:
+    def _lnprob(self,  theta: float) -> float:
         """Return the log probability of theta.
 
         Theta must be on the original scale.
@@ -66,7 +66,7 @@ class Prior(object):
         """
         raise NotImplementedError()
 
-    def sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns ``n_samples`` from the prior.
 
         All samples are on a log scale. This method calls ``self._sample_from_prior`` and applies a log transformation
@@ -89,11 +89,11 @@ class Prior(object):
         sample = np.log(self._sample_from_prior(n_samples=n_samples))
 
         if np.any(~np.isfinite(sample)):
-            raise ValueError("Sample %s from prior %s contains infinite values!" % (sample, self))
+            raise ValueError("Sample %s from prior %s contains infinite values!" % (sample,  self))
 
         return sample
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns ``n_samples`` from the prior.
 
         All samples are on a original scale.
@@ -109,7 +109,7 @@ class Prior(object):
         """
         raise NotImplementedError()
 
-    def gradient(self, theta: float) -> float:
+    def gradient(self,  theta: float) -> float:
         """Computes the gradient of the prior with respect to theta.
 
         Theta must be on the original scale.
@@ -126,7 +126,7 @@ class Prior(object):
         """
         return self._gradient(np.exp(theta))
 
-    def _gradient(self, theta: float) -> float:
+    def _gradient(self,  theta: float) -> float:
         """Computes the gradient of the prior with respect to theta.
 
         Parameters
@@ -143,12 +143,12 @@ class Prior(object):
 
 
 class TophatPrior(Prior):
-    def __init__(self, lower_bound: float, upper_bound: float, rng: np.random.RandomState):
+    def __init__(self,  lower_bound: float,  upper_bound: float,  rng: np.random.RandomState):
         """Tophat prior as it used in the original spearmint code.
 
         This class is adapted from RoBO:
 
-        Klein, A. and Falkner, S. and Mansur, N. and Hutter, F.
+        Klein,  A. and Falkner,  S. and Mansur,  N. and Hutter,  F.
         RoBO: A Flexible and Robust Bayesian Optimization Framework in Python
         In: NIPS 2017 Bayesian Optimization Workshop
 
@@ -169,7 +169,7 @@ class TophatPrior(Prior):
         if not (self.max > self.min):
             raise Exception("Upper bound of Tophat prior must be greater than the lower bound!")
 
-    def _lnprob(self, theta: float) -> float:
+    def _lnprob(self,  theta: float) -> float:
         """Return the log probability of theta.
 
         Parameters
@@ -186,7 +186,7 @@ class TophatPrior(Prior):
         else:
             return 0
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Return ``n_samples`` from the prior.
 
         Parameters
@@ -203,10 +203,10 @@ class TophatPrior(Prior):
         if n_samples <= 0:
             raise ValueError("argument n_samples needs to be positive (is %d)" % n_samples)
 
-        p0 = np.exp(self.rng.uniform(low=self._log_min, high=self._log_max, size=(n_samples,)))
+        p0 = np.exp(self.rng.uniform(low=self._log_min,  high=self._log_max,  size=(n_samples, )))
         return p0
 
-    def gradient(self, theta: float) -> float:
+    def gradient(self,  theta: float) -> float:
         """Computes the gradient of the prior with respect to theta.
 
         Parameters
@@ -224,12 +224,12 @@ class TophatPrior(Prior):
 
 
 class HorseshoePrior(Prior):
-    def __init__(self, scale: float, rng: np.random.RandomState):
+    def __init__(self,  scale: float,  rng: np.random.RandomState):
         """Horseshoe Prior as it is used in spearmint.
 
         This class is adapted from RoBO:
 
-        Klein, A. and Falkner, S. and Mansur, N. and Hutter, F.
+        Klein,  A. and Falkner,  S. and Mansur,  N. and Hutter,  F.
         RoBO: A Flexible and Robust Bayesian Optimization Framework in Python
         In: NIPS 2017 Bayesian Optimization Workshop
 
@@ -244,23 +244,23 @@ class HorseshoePrior(Prior):
         self.scale = scale
         self.scale_square = scale**2
 
-    def _lnprob(self, theta: float) -> float:
+    def _lnprob(self,  theta: float) -> float:
         """Return the log probability of theta.
 
         Parameters
         ----------
-        theta : (D,) numpy array
+        theta : (D, ) numpy array
             A hyperparameter configuration
 
         Returns
         -------
         float
         """
-        # We computed it exactly as in the original spearmint code, they basically say that there's no analytical form
-        # of the horseshoe prior, but that the multiplier is bounded between 2 and 4 and that they used the middle
-        # See "The horseshoe estimator for sparse signals" by Carvalho, Poloson and Scott (2010), Equation 1.
+        # We computed it exactly as in the original spearmint code,  they basically say that there's no analytical form
+        # of the horseshoe prior,  but that the multiplier is bounded between 2 and 4 and that they used the middle
+        # See "The horseshoe estimator for sparse signals" by Carvalho,  Poloson and Scott (2010),  Equation 1.
         # https://www.jstor.org/stable/25734098
-        # Compared to the paper by Carvalho, there's a constant multiplicator missing
+        # Compared to the paper by Carvalho,  there's a constant multiplicator missing
         # Compared to Spearmint we first have to undo the log space transformation of the theta
         # Note: "undo log space transformation" is done in parent class
         if theta == 0:
@@ -269,7 +269,7 @@ class HorseshoePrior(Prior):
             a = math.log(1 + 3.0 * (self.scale_square / theta**2))
             return math.log(a + VERY_SMALL_NUMBER)
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns N samples from the prior.
 
         Parameters
@@ -286,12 +286,12 @@ class HorseshoePrior(Prior):
         p0 = np.abs(self.rng.randn() * lamda * self.scale)
         return p0
 
-    def _gradient(self, theta: float) -> float:
+    def _gradient(self,  theta: float) -> float:
         """Computes the gradient of the prior with respect to theta.
 
         Parameters
         ----------
-        theta : (D,) numpy array
+        theta : (D, ) numpy array
             Hyperparameter configuration
 
         Returns
@@ -305,22 +305,22 @@ class HorseshoePrior(Prior):
             a = -(6 * self.scale_square)
             b = 3 * self.scale_square + theta**2
             b *= math.log(3 * self.scale_square * theta ** (-2) + 1)
-            b = max(b, 1e-14)
+            b = max(b,  1e-14)
             return a / b
 
 
 class LognormalPrior(Prior):
     def __init__(
-        self,
-        sigma: float,
-        rng: np.random.RandomState,
-        mean: float = 0,
+        self, 
+        sigma: float, 
+        rng: np.random.RandomState, 
+        mean: float = 0, 
     ):
         """Log normal prior.
 
         This class is adapted from RoBO:
 
-        Klein, A. and Falkner, S. and Mansur, N. and Hutter, F.
+        Klein,  A. and Falkner,  S. and Mansur,  N. and Hutter,  F.
         RoBO: A Flexible and Robust Bayesian Optimization Framework in Python
         In: NIPS 2017 Bayesian Optimization Workshop
 
@@ -344,7 +344,7 @@ class LognormalPrior(Prior):
         self.mean = mean
         self.sqrt_2_pi = np.sqrt(2 * np.pi)
 
-    def _lnprob(self, theta: float) -> float:
+    def _lnprob(self,  theta: float) -> float:
         """Return the log probability of theta.
 
         Parameters
@@ -364,7 +364,7 @@ class LognormalPrior(Prior):
             )
             return rval
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns N samples from the prior.
 
         Parameters
@@ -376,14 +376,14 @@ class LognormalPrior(Prior):
         -------
         np.ndarray
         """
-        return self.rng.lognormal(mean=self.mean, sigma=self.sigma, size=n_samples)
+        return self.rng.lognormal(mean=self.mean,  sigma=self.sigma,  size=n_samples)
 
-    def _gradient(self, theta: float) -> float:
+    def _gradient(self,  theta: float) -> float:
         """Computes the gradient of the prior with respect to theta.
 
         Parameters
         ----------
-        theta : (D,) numpy array
+        theta : (D, ) numpy array
             Hyperparameter configuration in log space
 
         Returns
@@ -400,7 +400,7 @@ class LognormalPrior(Prior):
 
 
 class SoftTopHatPrior(Prior):
-    def __init__(self, lower_bound: float, upper_bound: float, exponent: float, rng: np.random.RandomState) -> None:
+    def __init__(self,  lower_bound: float,  upper_bound: float,  exponent: float,  rng: np.random.RandomState) -> None:
         super().__init__(rng)
 
         with warnings.catch_warnings():
@@ -426,10 +426,10 @@ class SoftTopHatPrior(Prior):
             raise ValueError("Exponent cannot be less or equal than zero (but is %f)" % exponent)
         self.exponent = exponent
 
-    def lnprob(self, theta: float) -> float:
+    def lnprob(self,  theta: float) -> float:
         """Return the log probability of theta."""
         # We need to use lnprob here instead of _lnprob to have the squared function work
-        # in the logarithmic space, too.
+        # in the logarithmic space,  too.
         if np.ndim(theta) == 0:
             if theta < self._log_lower_bound:
                 return -((theta - self._log_lower_bound) ** self.exponent)
@@ -440,7 +440,7 @@ class SoftTopHatPrior(Prior):
         else:
             raise NotImplementedError()
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns N samples from the prior.
 
         Parameters
@@ -452,9 +452,9 @@ class SoftTopHatPrior(Prior):
         -------
         np.ndarray
         """
-        return np.exp(self.rng.uniform(self._log_lower_bound, self._log_upper_bound, size=(n_samples,)))
+        return np.exp(self.rng.uniform(self._log_lower_bound,  self._log_upper_bound,  size=(n_samples, )))
 
-    def gradient(self, theta: float) -> float:
+    def gradient(self,  theta: float) -> float:
         """Returns the gradient of the prior at theta."""
         if np.ndim(theta) == 0:
             if theta < self._log_lower_bound:
@@ -467,14 +467,14 @@ class SoftTopHatPrior(Prior):
             raise NotImplementedError()
 
     def __repr__(self) -> str:
-        return "SoftTopHatPrior(lower_bound=%f, upper_bound=%f)" % (
-            self.lower_bound,
-            self.upper_bound,
+        return "SoftTopHatPrior(lower_bound=%f,  upper_bound=%f)" % (
+            self.lower_bound, 
+            self.upper_bound, 
         )
 
 
 class GammaPrior(Prior):
-    def __init__(self, a: float, scale: float, loc: float, rng: np.random.RandomState):
+    def __init__(self,  a: float,  scale: float,  loc: float,  rng: np.random.RandomState):
         """Gamma prior.
 
         f(x) = (x-loc)**(a-1) * e**(-(x-loc)) * (1/scale)**a / gamma(a)
@@ -496,7 +496,7 @@ class GammaPrior(Prior):
         self.loc = loc
         self.scale = scale
 
-    def _lnprob(self, theta: float) -> float:
+    def _lnprob(self,  theta: float) -> float:
         """Returns the logpdf of theta.
 
         Parameters
@@ -510,9 +510,9 @@ class GammaPrior(Prior):
         """
         if np.ndim(theta) != 0:
             raise NotImplementedError()
-        return sps.gamma.logpdf(theta, a=self.a, scale=self.scale, loc=self.loc)
+        return sps.gamma.logpdf(theta,  a=self.a,  scale=self.scale,  loc=self.loc)
 
-    def _sample_from_prior(self, n_samples: int) -> np.ndarray:
+    def _sample_from_prior(self,  n_samples: int) -> np.ndarray:
         """Returns N samples from the prior.
 
         Parameters
@@ -524,9 +524,9 @@ class GammaPrior(Prior):
         -------
         np.ndarray
         """
-        return self.rng.gamma(shape=self.a, scale=self.scale, size=n_samples)
+        return self.rng.gamma(shape=self.a,  scale=self.scale,  size=n_samples)
 
-    def _gradient(self, theta: float) -> float:
+    def _gradient(self,  theta: float) -> float:
         """As computed by Wolfram Alpha.
 
         Parameters

@@ -1,11 +1,11 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any,  Dict,  List,  Tuple
 
 from smac.configspace import ConfigurationSpace
 from smac.epm.base_epm import BaseEPM
 from smac.epm.multi_objective_epm import MultiObjectiveEPM
 from smac.epm.random_forest.rf_with_instances import RandomForestWithInstances
 
-__copyright__ = "Copyright 2021, AutoML.org Freiburg-Hannover"
+__copyright__ = "Copyright 2021,  AutoML.org Freiburg-Hannover"
 __license__ = "3-clause BSD"
 
 
@@ -19,11 +19,11 @@ class MultiObjectiveRandomForest(MultiObjectiveEPM):
     """
 
     def construct_estimators(
-        self,
-        configspace: ConfigurationSpace,
-        types: List[int],
-        bounds: List[Tuple[float, float]],
-        model_kwargs: Dict[str, Any],
+        self, 
+        configspace: ConfigurationSpace, 
+        types: List[int], 
+        bounds: List[Tuple[float,  float]], 
+        model_kwargs: Dict[str,  Any], 
     ) -> List[BaseEPM]:
         """
         Construct a list of estimators. The number of the estimators equals 'self.num_targets'
@@ -36,17 +36,17 @@ class MultiObjectiveRandomForest(MultiObjectiveEPM):
             the i-th entry corresponds to the i-th input dimension. Let's say we
             have 2 dimension where the first dimension consists of 3 different
             categorical choices and the second dimension is continuous than we
-            have to pass [3, 0]. Note that we count starting from 0.
-        bounds : List[Tuple[float, float]]
-            bounds of input dimensions: (lower, uppper) for continuous dims; (n_cat, np.nan) for categorical dims
-        model_kwargs : Dict[str, Any]
+            have to pass [3,  0]. Note that we count starting from 0.
+        bounds : List[Tuple[float,  float]]
+            bounds of input dimensions: (lower,  uppper) for continuous dims; (n_cat,  np.nan) for categorical dims
+        model_kwargs : Dict[str,  Any]
             model kwargs for initializing models
         Returns
         -------
         estimators: List[BaseEPM]
             A list of Random Forests
         """
-        for key in ["configspace", "types", "bounds", "target_names"]:
+        for key in ["configspace",  "types",  "bounds",  "target_names"]:
             if key in model_kwargs:
                 del model_kwargs[key]
-        return [RandomForestWithInstances(configspace, types, bounds, **model_kwargs) for _ in range(self.num_targets)]
+        return [RandomForestWithInstances(configspace,  types,  bounds,  **model_kwargs) for _ in range(self.num_targets)]

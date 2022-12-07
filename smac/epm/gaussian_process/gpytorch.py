@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List,  Optional,  Tuple
 
 import warnings
 from collections import OrderedDict
@@ -6,12 +6,12 @@ from collections import OrderedDict
 import gpytorch
 import numpy as np
 import torch
-from botorch.optim.numpy_converter import module_to_array, set_params_with_array
+from botorch.optim.numpy_converter import module_to_array,  set_params_with_array
 from botorch.optim.utils import _scipy_objective_and_grad
 from gpytorch.constraints.constraints import Interval
 from gpytorch.distributions.multivariate_normal import MultivariateNormal
 from gpytorch.kernels import Kernel
-from gpytorch.likelihoods import FixedNoiseGaussianLikelihood, GaussianLikelihood
+from gpytorch.likelihoods import FixedNoiseGaussianLikelihood,  GaussianLikelihood
 from gpytorch.means import ZeroMean
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.models import ExactGP
@@ -23,14 +23,14 @@ from smac.configspace import ConfigurationSpace
 from smac.epm.gaussian_process import BaseModel
 from smac.utils.constants import VERY_SMALL_NUMBER
 
-warnings.filterwarnings("ignore", module="gpytorch")
+warnings.filterwarnings("ignore",  module="gpytorch")
 
 
 class ExactGPModel(ExactGP):
     """Exact GP model serves as a backbone of the class GaussianProcessGPyTorch"""
 
     def __init__(
-        self, train_X: torch.Tensor, train_y: torch.Tensor, base_covar_kernel: Kernel, likelihood: GaussianLikelihood
+        self,  train_X: torch.Tensor,  train_y: torch.Tensor,  base_covar_kernel: Kernel,  likelihood: GaussianLikelihood
     ):
         """
         Initialization function
@@ -46,34 +46,34 @@ class ExactGPModel(ExactGP):
         likelihood: GaussianLikelihood
             GP likelihood
         """
-        super(ExactGPModel, self).__init__(train_X, train_y, likelihood)
+        super(ExactGPModel,  self).__init__(train_X,  train_y,  likelihood)
         # in our experiments we find that ZeroMean more robust than ConstantMean when y is normalized
         self.mean_module = ZeroMean()
         self.covar_module = base_covar_kernel
 
-    def forward(self, x: torch.Tensor) -> MultivariateNormal:
+    def forward(self,  x: torch.Tensor) -> MultivariateNormal:
         """Compute the posterior mean and variance"""
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
-        return MultivariateNormal(mean_x, covar_x)
+        return MultivariateNormal(mean_x,  covar_x)
 
 
 class GPyTorchGaussianProcess(BaseModel):
     def __init__(
-        self,
-        configspace: ConfigurationSpace,
-        types: List[int],
-        bounds: List[Tuple[float, float]],
-        seed: int,
-        kernel: Kernel,
-        normalize_y: bool = True,
-        n_opt_restarts: int = 10,
-        likelihood: Optional[FixedNoiseGaussianLikelihood] = None,
-        instance_features: Optional[np.ndarray] = None,
-        pca_components: Optional[int] = None,
+        self, 
+        configspace: ConfigurationSpace, 
+        types: List[int], 
+        bounds: List[Tuple[float,  float]], 
+        seed: int, 
+        kernel: Kernel, 
+        normalize_y: bool = True, 
+        n_opt_restarts: int = 10, 
+        likelihood: Optional[FixedNoiseGaussianLikelihood] = None, 
+        instance_features: Optional[np.ndarray] = None, 
+        pca_components: Optional[int] = None, 
     ):
         """
-        A Gaussian Process written with GPyTorch, its interface is written to be compatible with partial sparse gaussian
+        A Gaussian Process written with GPyTorch,  its interface is written to be compatible with partial sparse gaussian
         process
 
         Parameters
@@ -84,10 +84,10 @@ class GPyTorchGaussianProcess(BaseModel):
              Specifies the number of categorical values of an input dimension where
              the i-th entry corresponds to the i-th input dimension. Let's say we
              have 2 dimensions where the first dimension consists of 3 different
-             categorical choices, and the second dimension is continuous than we
-             have to pass [3, 0]. Note that we count starting from 0.
-        bounds : List[Tuple[float, float]]
-            bounds of input dimensions: (lower, uppper) for continuous dims; (n_cat, np.nan) for categorical dims
+             categorical choices,  and the second dimension is continuous than we
+             have to pass [3,  0]. Note that we count starting from 0.
+        bounds : List[Tuple[float,  float]]
+            bounds of input dimensions: (lower,  uppper) for continuous dims; (n_cat,  np.nan) for categorical dims
         seed : int
             Model seed.
         kernel : Kernel
@@ -96,27 +96,27 @@ class GPyTorchGaussianProcess(BaseModel):
             Zero mean unit variance normalization of the output values
         n_opt_restarts : int
             Number of restarts for GP hyperparameter optimization
-        likelihood: Optional[FixedNoiseGaussianLikelihood] = None,
+        likelihood: Optional[FixedNoiseGaussianLikelihood] = None, 
             Gaussian Likelihood (or noise)
-        instance_features : np.ndarray (I, K)
+        instance_features : np.ndarray (I,  K)
             Contains the K dimensional instance features of the I different instances
         pca_components : float
             The number of components to keep when using PCA to reduce dimensionality of instance features. Requires to
             set n_feats (> pca_dims).
         """
-        super(GPyTorchGaussianProcess, self).__init__(
-            configspace,
-            types,
-            bounds,
-            seed,
-            kernel,
-            instance_features,
-            pca_components,
+        super(GPyTorchGaussianProcess,  self).__init__(
+            configspace, 
+            types, 
+            bounds, 
+            seed, 
+            kernel, 
+            instance_features, 
+            pca_components, 
         )
         if likelihood is None:
             noise_prior = HorseshoePrior(0.1)
             likelihood = GaussianLikelihood(
-                noise_prior=noise_prior, noise_constraint=Interval(np.exp(-25), np.exp(2), transform=None)
+                noise_prior=noise_prior,  noise_constraint=Interval(np.exp(-25),  np.exp(2), transform=None)
             ).double()
         self.likelihood = likelihood
 

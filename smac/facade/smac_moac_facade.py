@@ -43,7 +43,7 @@ class SMAC4MOAC(SMAC4AC):
     def __init__(self, **kwargs: Any):
         scenario = kwargs["scenario"]
 
-        kwargs["initial_design"] = kwargs.get("initial_design", LHDesign)  # TODO
+        kwargs["initial_design"] = kwargs.get("initial_design", LHDesign)  # CHANGED
         if len(scenario.cs.get_hyperparameters()) > 21201 and kwargs["initial_design"] is SobolDesign:
             raise ValueError(
                 'The default initial design "Sobol sequence" can only handle up to 21201 dimensions. '
@@ -76,6 +76,7 @@ class SMAC4MOAC(SMAC4AC):
             model_kwargs["min_samples_split"] = model_kwargs.get("min_samples_split", 2)
             model_kwargs["min_samples_leaf"] = model_kwargs.get("min_samples_leaf", 1)
             model_kwargs["log_y"] = model_kwargs.get("log_y", True)
+            model_kwargs["max_marginalized_instance_features"] = model_kwargs.get("max_marginalized_instance_features", 100)
             kwargs["model_kwargs"] = model_kwargs
 
         # == Multi Objective Algorithm
@@ -97,6 +98,13 @@ class SMAC4MOAC(SMAC4AC):
         kwargs["acquisition_function_optimizer_kwargs"] = acquisition_function_optimizer_kwargs
 
         kwargs["acquisition_function_optimizer"] = MOLocalAndSortedRandomSearch
+
+        # Objective bounds
+        if hasattr(scenario, "objective_bounds"):
+            # TODO check if dimensions are as expected
+            if not "runhistory_kwargs" in kwargs:
+                kwargs["runhistory_kwargs"] = {}
+            kwargs["runhistory_kwargs"]["objective_bounds"] = scenario.objective_bounds
 
         super().__init__(**kwargs)
         self.logger.info(self.__class__)

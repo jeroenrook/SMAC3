@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import List,  Optional,  Tuple,  Union,  cast
 
 import logging
 import warnings
@@ -10,10 +10,10 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Kernel
 
 from smac.configspace import ConfigurationSpace
-from smac.epm.gaussian_process import BaseModel, GaussianProcess
+from smac.epm.gaussian_process import BaseModel,  GaussianProcess
 from smac.epm.gaussian_process.utils.prior import Prior
 
-__copyright__ = "Copyright 2021, AutoML.org Freiburg-Hannover"
+__copyright__ = "Copyright 2021,  AutoML.org Freiburg-Hannover"
 __license__ = "3-clause BSD"
 
 
@@ -29,7 +29,7 @@ class MCMCGaussianProcess(BaseModel):
 
     This code is based on the implementation of RoBO:
 
-    Klein, A. and Falkner, S. and Mansur, N. and Hutter, F.
+    Klein,  A. and Falkner,  S. and Mansur,  N. and Hutter,  F.
     RoBO: A Flexible and Robust Bayesian Optimization Framework in Python
     In: NIPS 2017 Bayesian Optimization Workshop
 
@@ -40,9 +40,9 @@ class MCMCGaussianProcess(BaseModel):
         the i-th entry corresponds to the i-th input dimension. Let's say we
         have 2 dimension where the first dimension consists of 3 different
         categorical choices and the second dimension is continuous than we
-        have to pass [3, 0]. Note that we count starting from 0.
-    bounds : List[Tuple[float, float]]
-        bounds of input dimensions: (lower, uppper) for continuous dims; (n_cat, np.nan) for categorical dims
+        have to pass [3,  0]. Note that we count starting from 0.
+    bounds : List[Tuple[float,  float]]
+        bounds of input dimensions: (lower,  uppper) for continuous dims; (n_cat,  np.nan) for categorical dims
     seed : int
         Model seed.
     kernel : george kernel object
@@ -61,7 +61,7 @@ class MCMCGaussianProcess(BaseModel):
         Zero mean unit variance normalization of the output values
     mcmc_sampler : str
         Choose a self-tuning MCMC sampler. Can be either ``emcee`` or ``nuts``.
-    instance_features : np.ndarray (I, K)
+    instance_features : np.ndarray (I,  K)
         Contains the K dimensional instance features
         of the I different instances
     pca_components : float
@@ -71,29 +71,29 @@ class MCMCGaussianProcess(BaseModel):
     """
 
     def __init__(
-        self,
-        configspace: ConfigurationSpace,
-        types: List[int],
-        bounds: List[Tuple[float, float]],
-        seed: int,
-        kernel: Kernel,
-        n_mcmc_walkers: int = 20,
-        chain_length: int = 50,
-        burnin_steps: int = 50,
-        normalize_y: bool = True,
-        mcmc_sampler: str = "emcee",
-        average_samples: bool = False,
-        instance_features: Optional[np.ndarray] = None,
-        pca_components: Optional[int] = None,
+        self, 
+        configspace: ConfigurationSpace, 
+        types: List[int], 
+        bounds: List[Tuple[float,  float]], 
+        seed: int, 
+        kernel: Kernel, 
+        n_mcmc_walkers: int = 20, 
+        chain_length: int = 50, 
+        burnin_steps: int = 50, 
+        normalize_y: bool = True, 
+        mcmc_sampler: str = "emcee", 
+        average_samples: bool = False, 
+        instance_features: Optional[np.ndarray] = None, 
+        pca_components: Optional[int] = None, 
     ):
         super().__init__(
-            configspace=configspace,
-            types=types,
-            bounds=bounds,
-            seed=seed,
-            kernel=kernel,
-            instance_features=instance_features,
-            pca_components=pca_components,
+            configspace=configspace, 
+            types=types, 
+            bounds=bounds, 
+            seed=seed, 
+            kernel=kernel, 
+            instance_features=instance_features, 
+            pca_components=pca_components, 
         )
 
         self.n_mcmc_walkers = n_mcmc_walkers
@@ -112,16 +112,16 @@ class MCMCGaussianProcess(BaseModel):
         # Internal statistics
         self._n_ll_evals = 0
 
-    def _train(self, X: np.ndarray, y: np.ndarray, do_optimize: bool = True) -> "MCMCGaussianProcess":
+    def _train(self,  X: np.ndarray,  y: np.ndarray,  do_optimize: bool = True) -> "MCMCGaussianProcess":
         """Performs MCMC sampling to sample hyperparameter configurations from the likelihood and
         trains for each sample a GP on X and y.
 
         Parameters
         ----------
-        X: np.ndarray (N, D)
-            Input data points. The dimensionality of X is (N, D),
+        X: np.ndarray (N,  D)
+            Input data points. The dimensionality of X is (N,  D), 
             with N as the number of points and D is the number of features.
-        y: np.ndarray (N,)
+        y: np.ndarray (N, )
             The corresponding target values.
         do_optimize: boolean
             If set to true we perform MCMC sampling otherwise we just use the
@@ -131,9 +131,9 @@ class MCMCGaussianProcess(BaseModel):
         if self.normalize_y:
             # A note on normalization for the Gaussian process with MCMC:
             # Scikit-learn uses a different "normalization" than we use in SMAC3. Scikit-learn normalizes the data to
-            # have zero mean, while we normalize it to have zero mean unit variance. To make sure the scikit-learn GP
-            # behaves the same when we use it directly or indirectly (through the gaussian_process.py file), we
-            # normalize the data here. Then, after the individual GPs are fit, we inject the statistics into them so
+            # have zero mean,  while we normalize it to have zero mean unit variance. To make sure the scikit-learn GP
+            # behaves the same when we use it directly or indirectly (through the gaussian_process.py file),  we
+            # normalize the data here. Then,  after the individual GPs are fit,  we inject the statistics into them so
             # they unnormalize the data at prediction time.
             y = self._normalize_y(y)
 

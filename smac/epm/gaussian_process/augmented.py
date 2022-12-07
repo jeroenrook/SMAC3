@@ -1,11 +1,11 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict,  List,  Optional,  Tuple,  Union
 
 from collections import OrderedDict
 
 import gpytorch
 import numpy as np
 import torch
-from botorch.optim.numpy_converter import module_to_array, set_params_with_array
+from botorch.optim.numpy_converter import module_to_array,  set_params_with_array
 from botorch.optim.utils import _get_extra_mll_args
 from gpytorch.constraints.constraints import Interval
 from gpytorch.distributions import MultivariateNormal
@@ -19,8 +19,8 @@ from scipy import optimize
 from scipy.stats.qmc import LatinHypercube
 
 from smac.configspace import ConfigurationSpace
-from smac.epm.gaussian_process.gpytorch import ExactGPModel, GPyTorchGaussianProcess
-from smac.epm.gaussian_process.kernels.boing import FITCKernel, FITCMean
+from smac.epm.gaussian_process.gpytorch import ExactGPModel,  GPyTorchGaussianProcess
+from smac.epm.gaussian_process.kernels.boing import FITCKernel,  FITCMean
 from smac.epm.utils import check_subspace_points
 
 gpytorch.settings.debug.off()
@@ -28,38 +28,38 @@ gpytorch.settings.debug.off()
 
 class AugmentedLocalGaussianProcess(ExactGP):
     def __init__(
-        self,
-        X_in: torch.Tensor,
-        y_in: torch.Tensor,
-        X_out: torch.Tensor,
-        y_out: torch.Tensor,
-        likelihood: GaussianLikelihood,
-        base_covar_kernel: Kernel,
+        self, 
+        X_in: torch.Tensor, 
+        y_in: torch.Tensor, 
+        X_out: torch.Tensor, 
+        y_out: torch.Tensor, 
+        likelihood: GaussianLikelihood, 
+        base_covar_kernel: Kernel, 
     ):
         """
-        An Augmented Local GP, it is trained with the points inside a subregion while its prior is augemented by the
+        An Augmented Local GP,  it is trained with the points inside a subregion while its prior is augemented by the
         points outside the subregion (global configurations)
 
         Parameters
         ----------
-        X_in: torch.Tensor (N_in, D),
+        X_in: torch.Tensor (N_in,  D), 
             feature vector of the points inside the subregion
-        y_in: torch.Tensor (N_in, 1),
+        y_in: torch.Tensor (N_in,  1), 
             observation inside the subregion
-        X_out: torch.Tensor (N_out, D),
+        X_out: torch.Tensor (N_out,  D), 
             feature vector  of the points outside the subregion
-        y_out:torch.Tensor (N_out, 1),
+        y_out:torch.Tensor (N_out,  1), 
             observation inside the subregion
-        likelihood: GaussianLikelihood,
+        likelihood: GaussianLikelihood, 
             likelihood of the GP (noise)
-        base_covar_kernel: Kernel,
+        base_covar_kernel: Kernel, 
             Covariance Kernel
         """
         X_in = X_in.unsqueeze(-1) if X_in.ndimension() == 1 else X_in
         X_out = X_out.unsqueeze(-1) if X_out.ndimension() == 1 else X_out
         assert X_in.shape[-1] == X_out.shape[-1]
 
-        super(AugmentedLocalGaussianProcess, self).__init__(X_in, y_in, likelihood)
+        super(AugmentedLocalGaussianProcess,  self).__init__(X_in,  y_in,  likelihood)
 
         self._mean_module = ZeroMean()
         self.base_covar = base_covar_kernel
@@ -68,27 +68,27 @@ class AugmentedLocalGaussianProcess(ExactGP):
         self.y_out = y_out
         self.augmented = False
 
-    def set_augment_module(self, X_inducing: torch.Tensor) -> None:
+    def set_augment_module(self,  X_inducing: torch.Tensor) -> None:
         """
-        Set an augmentation module, which will be used later for inference
+        Set an augmentation module,  which will be used later for inference
 
         Parameters
         ----------
-        X_inducing: torch.Tensor(N_inducing, D)
-           inducing points, it needs to have the same number of dimensions as X_in
+        X_inducing: torch.Tensor(N_inducing,  D)
+           inducing points,  it needs to have the same number of dimensions as X_in
         """
         X_inducing = X_inducing.unsqueeze(-1) if X_inducing.ndimension() == 1 else X_inducing
         # assert X_inducing.shape[-1] == self.X_out.shape[-1]
         self.covar_module = FITCKernel(
-            self.base_covar, X_inducing=X_inducing, X_out=self.X_out, y_out=self.y_out, likelihood=self.likelihood
+            self.base_covar,  X_inducing=X_inducing,  X_out=self.X_out,  y_out=self.y_out,  likelihood=self.likelihood
         )
         self.mean_module = FITCMean(covar_module=self.covar_module)
         self.augmented = True
 
-    def forward(self, x: torch.Tensor) -> MultivariateNormal:
+    def forward(self,  x: torch.Tensor) -> MultivariateNormal:
         """
-        Compute the prior values. If optimize_kernel_hps is set True in the training phases, this model degenerates to
-        a vanilla GP model with ZeroMean and base_covar as covariance matrix. Otherwise, we apply partial sparse GP
+        Compute the prior values. If optimize_kernel_hps is set True in the training phases,  this model degenerates to
+        a vanilla GP model with ZeroMean and base_covar as covariance matrix. Otherwise,  we apply partial sparse GP
         mean and kernels here.
         """
         if not self.augmented:
@@ -98,7 +98,7 @@ class AugmentedLocalGaussianProcess(ExactGP):
         else:
             covar_x = self.covar_module(x)
             mean_x = self.mean_module(x)
-        return MultivariateNormal(mean_x, covar_x)
+        return MultivariateNormal(mean_x,  covar_x)
 
 
 class VariationalGaussianProcess(gpytorch.models.ApproximateGP):
@@ -107,24 +107,24 @@ class VariationalGaussianProcess(gpytorch.models.ApproximateGP):
     We only optimize for the position of the continuous dimensions and keep the categorical dimensions constant.
     """
 
-    def __init__(self, kernel: Kernel, X_inducing: torch.Tensor):
+    def __init__(self,  kernel: Kernel,  X_inducing: torch.Tensor):
         """
         Initialize a Variational GP
-        we set the lower bound and upper bounds of inducing points for numerical hyperparameters between 0 and 1,
-        that is, we constrain the inducing points to lay inside the subregion.
+        we set the lower bound and upper bounds of inducing points for numerical hyperparameters between 0 and 1, 
+        that is,  we constrain the inducing points to lay inside the subregion.
 
         Parameters
         ----------
         kernel: Kernel
-            kernel of the variational GP, its hyperparameter needs to be fixed when it is by LGPGA
-        X_inducing: torch.tensor (N_inducing, D)
+            kernel of the variational GP,  its hyperparameter needs to be fixed when it is by LGPGA
+        X_inducing: torch.tensor (N_inducing,  D)
             inducing points
         """
         variational_distribution = gpytorch.variational.TrilNaturalVariationalDistribution(X_inducing.size(0))
         variational_strategy = gpytorch.variational.VariationalStrategy(
-            self, X_inducing, variational_distribution, learn_inducing_locations=True
+            self,  X_inducing,  variational_distribution,  learn_inducing_locations=True
         )
-        super(VariationalGaussianProcess, self).__init__(variational_strategy)
+        super(VariationalGaussianProcess,  self).__init__(variational_strategy)
         self.mean_module = gpytorch.means.ZeroMean()
         self.covar_module = kernel
 
