@@ -28,6 +28,11 @@ def normalize_costs(values: list[float], bounds: list[tuple[float, float]] | Non
     costs = []
     for v, b in zip(values, bounds):
         assert type(v) != list
+        # min max normalisation
+
+        # limit value to bounds region
+        v = min(max(v, b[0]), b[1])
+
         p = v - b[0]
         q = b[1] - b[0]
 
