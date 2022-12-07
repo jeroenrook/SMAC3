@@ -2,7 +2,7 @@
 import abc
 from abc import ABC
 from typing import Any, List, Tuple
-
+import time
 import copy
 import logging
 import sys
@@ -98,7 +98,6 @@ class AbstractAcquisitionFunction(object, metaclass=abc.ABCMeta):
         X = convert_configurations_to_array(configurations)
         if len(X.shape) == 1:
             X = X[np.newaxis, :]
-
         acq = self._compute(X)
         if np.any(np.isnan(acq)):
             idx = np.where(np.isnan(acq))[0]
@@ -150,7 +149,10 @@ class _ModelProxy(Model, ABC):
         X = X.reshape([X.shape[0], -1]).numpy()  # 3D -> 2D
 
         # predict
+        # start_time = time.time()
+        # print(f"Start predicting ")
         mean, var_ = self.model.predict_marginalized_over_instances(X)
+        # print(f"Done in {time.time() - start_time}s")
         post = _PosteriorProxy()
         post.mean = torch.asarray(mean).reshape(X.shape[0], 1, -1)  # 2D -> 3D
         post.variance = torch.asarray(var_).reshape(X.shape[0], 1, -1)  # 2D -> 3D
@@ -174,6 +176,35 @@ class EHVI(AbstractAcquisitionFunction):
         self.stats = stats
         self.runhistory = runhistory
         self._required_updates = ("model",)
+        self._ehvi = None
+
+    def update(self, **kwargs: Any) -> None:
+        super(EHVI, self).update(**kwargs)
+
+        #Update EHVI
+        # Get points of population
+        population_configs = [self.runhistory.ids_config[config_id] for config_id in self.stats.population]
+        # population_costs = [self.runhistory.get_cost(c, aggregate=False) for c in population_configs]
+        # Prediction all
+        population_X = np.array([config.get_array() for config in population_configs])
+        population_costs, _ = self.model.predict_marginalized_over_instances(population_X)
+
+        # Compute HV
+        # population_hv = self.get_hypervolume(population_costs)
+
+        # BOtorch EHVI implementation
+        bomodel = _ModelProxy(self.model)
+        ref_point = pygmo.hypervolume(population_costs).refpoint(
+            offset=1
+        )  # TODO get proper reference points from user/cutoffs
+        # ref_point = torch.asarray(ref_point)
+        # TODO partition from all runs instead of only population?
+        # TODO NondominatedPartitioning and ExpectedHypervolumeImprovement seem no too difficult to implement natively
+        # TODO pass along RNG
+        # Transfrom the objective space to cells based on the population
+        partitioning = NondominatedPartitioning(torch.asarray(ref_point), torch.asarray(population_costs))
+        self._ehvi = ExpectedHypervolumeImprovement(bomodel, ref_point, partitioning)
+
 
     def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
         """
@@ -210,33 +241,10 @@ class EHVI(AbstractAcquisitionFunction):
         if len(X.shape) == 1:
             X = X[:, np.newaxis]
 
-        m, var_ = self.model.predict_marginalized_over_instances(X)
+        # m, var_ = self.model.predict_marginalized_over_instances(X)
         # Find a way to propagate the variance into the HV
-        # std = np.sqrt(var_)
-
-        # Get points of population
-        population_configs = [self.runhistory.ids_config[config_id] for config_id in self.stats.population]
-        population_costs = [self.runhistory.get_cost(c, aggregate=False) for c in population_configs]
-        # TODO transform with RunHistory2EPM transform or de-transform the marginalized_performance_over_instances
-
-        # Compute HV
-        # population_hv = self.get_hypervolume(population_costs)
-
-        # BOtorch EHVI implementation
-        bomodel = _ModelProxy(self.model)
-        ref_point = pygmo.hypervolume(population_costs).refpoint(
-            offset=1
-        )  # TODO get proper reference points from user/cutoffs
-        # ref_point = torch.asarray(ref_point)
-        # TODO partition from all runs instead of only population?
-        # TODO NondominatedPartitioning and ExpectedHypervolumeImprovement seem no too difficult to implement natively
-        # TODO pass along RNG
-        # Transfrom the objective space to cells based on the population
-        partitioning = NondominatedPartitioning(torch.asarray(ref_point), torch.asarray(population_costs))
-        ehvi = ExpectedHypervolumeImprovement(bomodel, ref_point, partitioning)
         boX = torch.asarray(X).reshape(X.shape[0], 1, -1)  # 2D -> #3D
-        improvements = ehvi(boX).numpy().reshape(-1, 1)  # TODO here are the expected hv improvements computed.
-        # print(improvements.max())
+        improvements = self._ehvi(boX).numpy().reshape(-1, 1)  # TODO here are the expected hv improvements computed.
         return improvements
 
         # TODO non-dominated sorting of costs. Compute EHVI only until the EHVI is not expected to improve anymore.

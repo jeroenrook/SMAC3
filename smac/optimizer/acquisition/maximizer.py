@@ -722,6 +722,7 @@ class RandomSearch(AcquisitionFunctionMaximizer):
             An iterable consistng of
             tuple(acqusition_value, :class:`smac.configspace.Configuration`).
         """
+        self.logger.debug(f"Sample {num_points} random points")
         if num_points > 1:
             rand_configs = self.config_space.sample_configuration(size=num_points)
         else:
