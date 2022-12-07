@@ -213,6 +213,10 @@ class SMBO(object):
 
         # Main BO loop
         while True:
+            if self.epm_chooser.rh2EPM.multi_objective_algorithm != None:   #.multi_objective_algorithm is not None:
+                if hasattr(self.epm_chooser.rh2EPM.multi_objective_algorithm, "update_on_iteration_start"):
+                    self.epm_chooser.rh2EPM.multi_objective_algorithm.update_on_iteration_start(num_obj)
+
             if self.scenario.shared_model:  # type: ignore[attr-defined] # noqa F821
                 pSMAC.read(
                     run_history=self.runhistory,

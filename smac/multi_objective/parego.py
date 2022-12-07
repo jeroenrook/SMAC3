@@ -16,6 +16,15 @@ class ParEGO(AggregationStrategy):
         super(ParEGO, self).__init__(rng=rng)
         self.rho = rho
 
+        # Will be set on starting an SMBO iteration
+        self._theta: np.ndarray | None = None
+
+    def update_on_iteration_start(self, n_objectives: int) -> None:  # noqa: D102
+        self._theta = self.rng.rand(n_objectives)
+
+        # Normalize so that all theta values sum up to 1
+        self._theta = self._theta / (np.sum(self._theta) + 1e-10)
+
     def __call__(self, values: list[float]) -> float:
         """
         Transform a multi-objective loss to a single loss.
@@ -30,12 +39,8 @@ class ParEGO(AggregationStrategy):
         cost : float
             Combined cost.
         """
-        # Then we have to compute the weight
-        theta = self.rng.rand(len(values))
+        if self._theta is None:
+            raise ValueError("Iteration not yet initalized; Call `update_on_iteration_start()` first")
 
-        # Normalize st all theta values sum up to 1
-        theta = theta / (np.sum(theta) + 1e-10)
-
-        # Weight the values
-        theta_f = theta * values
+        theta_f = self._theta * values
         return np.max(theta_f, axis=0) + self.rho * np.sum(theta_f, axis=0)
