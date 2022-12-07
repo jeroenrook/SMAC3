@@ -30,7 +30,7 @@ class ExecuteTARunAClib(SerialRunner):
         seed: int = 12345,
         budget: Optional[float] = None,
         instance_specific: str = "0",
-    ) -> Tuple[StatusType, float, float, Dict]:
+    ) -> Tuple[StatusType, float, float | List[float], Dict]:
         """Runs target algorithm <self.ta> with configuration <config> on instance <instance> with
         instance specifics.
 
@@ -63,8 +63,8 @@ class ExecuteTARunAClib(SerialRunner):
             additional_info: dict
                 all further additional run information
         """
-        if budget is not None:
-            raise NotImplementedError()
+        # if budget is not None:
+        #     raise NotImplementedError()
 
         if instance is None:
             instance = "0"
@@ -116,6 +116,8 @@ class ExecuteTARunAClib(SerialRunner):
 
         if self.run_obj == "runtime":
             cost = float(results["runtime"])
+        elif isinstance(results["cost"], list):
+            cost = [float(c) for c in results["cost"]]
         else:
             cost = float(results["cost"])
 
