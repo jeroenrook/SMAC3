@@ -178,6 +178,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
     def __init__(
         self,
         overwrite_existing_runs: bool = False,
+        objective_bounds: list[tuple(float, float)] = None,
     ) -> None:
         self.logger = PickableLoggerAdapter(self.__module__ + "." + self.__class__.__name__)
 
@@ -209,7 +210,13 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
         self.overwrite_existing_runs = overwrite_existing_runs
         self.num_obj = -1  # type: int
+
         self.objective_bounds = []  # type: List[Tuple[float, float]]
+        self.fixed_bounds = False
+        if objective_bounds is not None:
+            self.objective_bounds = objective_bounds
+            self.fixed_bounds = True
+
 
     def __contains__(self, k: object) -> bool:
         """Dictionary semantics for `k in runhistory`"""
@@ -259,6 +266,9 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
     def _update_objective_bounds(self) -> None:
         """Update the objective bounds based on the data in the runhistory."""
+        if self.fixed_bounds:
+            return
+
         all_costs = []
         for (costs, _, status, _, _, _) in self.data.values():
             if status == StatusType.SUCCESS:
@@ -498,6 +508,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
 
         # Removing duplicates while keeping the order
         inst_seed_budgets = list(dict.fromkeys(self.get_runs_for_config(config, only_max_observed_budget=True)))
+        #TODO: Same MO implementation as incremental_update_cost
         self._cost_per_config[config_id] = self.average_cost(config, inst_seed_budgets)
         self.num_runs_per_config[config_id] = len(inst_seed_budgets)
 
