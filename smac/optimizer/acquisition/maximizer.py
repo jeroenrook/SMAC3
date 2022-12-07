@@ -190,7 +190,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         vectorization_max_obtain: int = 64,
     ):
         super().__init__(acquisition_function, config_space, rng)
-        self.max_steps = max_steps
+        self.max_steps = np.inf if max_steps is None else max_steps
         self.n_steps_plateau_walk = n_steps_plateau_walk
         self.vectorization_min_obtain = vectorization_min_obtain
         self.vectorization_max_obtain = vectorization_max_obtain
@@ -346,7 +346,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         local_search_steps = [0] * num_candidates
         # tracking the number of neighbors looked at for logging purposes
         neighbors_looked_at = [0] * num_candidates
-        # tracking the number of neighbors generated for logging purposse
+        # tracking the number of neighbors generated for logging purposes
         neighbors_generated = [0] * num_candidates
         # how many neighbors were obtained for the i-th local search. Important to map the individual acquisition
         # function values to the correct local search run
@@ -362,7 +362,9 @@ class LocalSearch(AcquisitionFunctionMaximizer):
             )
             local_search_steps[i] += 1
         # Keeping track of configurations with equal acquisition value for plateau walking
-        neighbors_w_equal_acq = [[] for _ in range(num_candidates)]  # type: List[List[Configuration]]
+        # neighbors_w_equal_acq = [[] for _ in range(num_candidates)]  # type: List[List[Configuration]]
+        neighbors_w_equal_acq_count = [0] * num_candidates  # type: List[List[Configuration]]
+        sampled_neighbor_w_equal_acq = [None] * num_candidates
 
         num_iters = 0
         while np.any(active):
@@ -395,6 +397,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                     obtain_n[i] = len(neighbors_for_i)
                     neighbors.extend(neighbors_for_i)
 
+            self.logger.debug(f"Iteration {num_iters} with {np.count_nonzero(active)} active searches and {len(neighbors)} aqcuisition function calls.")
             if len(neighbors) != 0:
                 start_time = time.time()
                 acq_val = self.acquisition_function(neighbors)
@@ -437,11 +440,15 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                                     new_neighborhood[i] = True
                                     improved[i] = True
                                     local_search_steps[i] += 1
-                                    neighbors_w_equal_acq[i] = []
+                                    #neighbors_w_equal_acq[i] = []
+                                    neighbors_w_equal_acq_count[i] = 0
                                     obtain_n[i] = 1
                             # Found an equally well performing configuration, keeping it for plateau walking
                             elif acq_val[acq_index] == acq_val_candidates[i]:
-                                neighbors_w_equal_acq[i].append(neighbors[acq_index])
+                                #neighbors_w_equal_acq[i].append(neighbors[acq_index])
+                                neighbors_w_equal_acq_count[i] += 1
+                                if sampled_neighbor_w_equal_acq[i] is None:
+                                    sampled_neighbor_w_equal_acq[i] = neighbors[acq_index]
 
                             acq_index += 1
 
@@ -452,20 +459,33 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                 if not active[i]:
                     continue
                 if obtain_n[i] == 0 or improved[i]:
-                    obtain_n[i] = 2
+                    obtain_n[i] = self.vectorization_min_obtain  # 2  # TODO JG: Should be self.vectorization_min_obtain right?
                 else:
                     obtain_n[i] = obtain_n[i] * 2
                     obtain_n[i] = min(obtain_n[i], self.vectorization_max_obtain)
                 if new_neighborhood[i]:
                     if not improved[i] and n_no_plateau_walk[i] < self.n_steps_plateau_walk:
-                        if len(neighbors_w_equal_acq[i]) != 0:
-                            candidates[i] = neighbors_w_equal_acq[i][0]
-                            neighbors_w_equal_acq[i] = []
+                        # No improvement found in complete neighbourhood
+                        # if len(neighbors_w_equal_acq[i]) != 0:
+                        if neighbors_w_equal_acq_count[i] > 0:
+                            # TODO JG: We should randomly sample here right, but since order is random we already have this here?
+                            #  Since we only use the first, we do not need to save all the configurations!
+                            candidates[i] = sampled_neighbor_w_equal_acq[i]
+                            #neighbors_w_equal_acq[i] = []
+                            neighbors_w_equal_acq_count[i] = 0
+                            sampled_neighbor_w_equal_acq[i] = None
+                        else:
+                            # TODO JG: All neighbors are worse than candidate. Stop the search
+                            self.logger.debug(f"Local search {i}: Stop search since there are no better points in the neighborhood.")
+                            active[i] = False
+                            continue
                         n_no_plateau_walk[i] += 1
-                    if n_no_plateau_walk[i] >= self.n_steps_plateau_walk:
+                    # TODO JG: What about max_steps!?
+                    #  ALso if all neighbours have the same acquisition value should we stop?
+                    if n_no_plateau_walk[i] >= self.n_steps_plateau_walk or local_search_steps[i] >= self.max_steps:
+                        self.logger.debug(f"Local search {i}: Stop search after walking {n_no_plateau_walk[i]} plateaus after {neighbors_looked_at[i]}.")
                         active[i] = False
                         continue
-
                     neighborhood_iterators[i] = get_one_exchange_neighbourhood(
                         candidates[i],
                         seed=self.rng.randint(low=0, high=100000),

@@ -156,12 +156,12 @@ class EPMChooser:
         -------
         Iterator
         """
-        self.logger.debug("Search for next configuration")
         X, Y, X_configurations = self._collect_data_to_train_model()
 
         if X.shape[0] == 0:
             # Only return a single point to avoid an overly high number of
             # random search iterations
+            self.logger.debug(f"EPM Chooser sample random point becauce there is no data yet. Samples is below {self.min_samples_model}")
             return self._random_search.maximize(runhistory=self.runhistory, stats=self.stats, num_points=1)
         self.model.train(X, Y)
 
