@@ -10,7 +10,7 @@ from smac.facade.abstract_facade import AbstractFacade
 from smac.initial_design.default_design import DefaultInitialDesign
 from smac.intensifier.intensifier import Intensifier
 from smac.model.random_forest.random_forest import RandomForest
-from smac.multi_objective.aggregation_strategy import MeanAggregationStrategy
+from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
 from smac.random_design.probability_design import ProbabilityRandomDesign
 from smac.runhistory.encoder.encoder import RunHistoryEncoder
 from smac.scenario import Scenario
@@ -164,12 +164,9 @@ class MultiObjectiveFacade(AbstractFacade):
         return ProbabilityRandomDesign(probability=probability, seed=scenario.seed)
 
     @staticmethod
-    # TODO update mo algo (no aggregation)
     def get_multi_objective_algorithm(  # type: ignore
         scenario: Scenario,
-        *,
-        objective_weights: list[float] | None = None,
-    ) -> MeanAggregationStrategy:
+    ) -> NoAggregationStrategy:
         """Returns the mean aggregation strategy for the multi objective algorithm.
 
         Parameters
@@ -179,9 +176,8 @@ class MultiObjectiveFacade(AbstractFacade):
             Weights for averaging the objectives in a weighted manner. Must be of the same length as the number of
             objectives.
         """
-        return MeanAggregationStrategy(
+        return NoAggregationStrategy(
             scenario=scenario,
-            objective_weights=objective_weights,
         )
 
     @staticmethod
