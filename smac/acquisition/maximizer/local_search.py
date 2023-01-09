@@ -292,13 +292,13 @@ class LocalSearch(AbstractAcquisitionMaximizer):
         local_search_steps = [0] * num_candidates
         # tracking the number of neighbors looked at for logging purposes
         neighbors_looked_at = [0] * num_candidates
-        # tracking the number of neighbors generated for logging purposse
+        # tracking the number of neighbors generated for logging purposes
         neighbors_generated = [0] * num_candidates
         # how many neighbors were obtained for the i-th local search. Important to map the individual acquisition
         # function values to the correct local search run
         obtain_n = [self._vectorization_min_obtain] * num_candidates
         # Tracking the time it takes to compute the acquisition function
-        times = []
+        times_per_iteration: list[float] = []
 
         # Set up the neighborhood generators
         neighborhood_iterators = []
@@ -341,11 +341,12 @@ class LocalSearch(AbstractAcquisitionMaximizer):
                     obtain_n[i] = len(neighbors_for_i)
                     neighbors.extend(neighbors_for_i)
 
+            logger.debug(f"Iteration {num_iters} with {np.count_nonzero(active)} active searches and {len(neighbors)} aqcuisition function calls.")
             if len(neighbors) != 0:
                 start_time = time.time()
                 acq_val = self._acquisition_function(neighbors)
                 end_time = time.time()
-                times.append(end_time - start_time)
+                times_per_iteration.append(end_time - start_time)
                 if np.ndim(acq_val.shape) == 0:
                     acq_val = np.asarray([acq_val])
 
@@ -423,11 +424,13 @@ class LocalSearch(AbstractAcquisitionMaximizer):
                     )
 
         logger.debug(
-            "Local searches took %s steps and looked at %s configurations. Computing the acquisition function in "
-            "vectorized for took %f seconds on average.",
+            "Local searches took %s steps and looked at %s configurations. Computing the acquisition function for "
+            "each search took %f (prev %f) seconds on average and each acquisition function call took %f seconds on average.",
             local_search_steps,
             neighbors_looked_at,
-            np.mean(times),
+            np.sum(times_per_iteration)/num_candidates,
+            np.mean(times_per_iteration),
+            times_per_iteration/np.sum(neighbors_looked_at),
         )
 
         return [(a, i) for a, i in zip(acq_val_candidates, candidates)]
