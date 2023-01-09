@@ -3,9 +3,6 @@ from __future__ import annotations
 from ConfigSpace import Configuration
 
 from smac.acquisition.function.expected_improvement import EI
-from smac.acquisition.maximizer.local_and_random_search import (
-    LocalAndSortedRandomSearch,
-)
 from smac.facade.abstract_facade import AbstractFacade
 from smac.initial_design.default_design import DefaultInitialDesign
 from smac.intensifier.intensifier import Intensifier
@@ -15,6 +12,7 @@ from smac.random_design.probability_design import ProbabilityRandomDesign
 from smac.runhistory.encoder.encoder import RunHistoryEncoder
 from smac.scenario import Scenario
 from smac.utils.logging import get_logger
+from smac.acquisition.maximizer.multi_objective_search import MOLocalAndSortedRandomSearch
 
 __copyright__ = "Copyright 2022, automl.org"
 __license__ = "3-clause BSD"
@@ -93,12 +91,11 @@ class MultiObjectiveFacade(AbstractFacade):
         return EI(xi=xi)
 
     @staticmethod
-    # TODO update acq optimizer
     def get_acquisition_maximizer(  # type: ignore
         scenario: Scenario,
-    ) -> LocalAndSortedRandomSearch:
+    ) -> MOLocalAndSortedRandomSearch:
         """Returns local and sorted random search as acquisition maximizer."""
-        optimizer = LocalAndSortedRandomSearch(
+        optimizer = MOLocalAndSortedRandomSearch(
             scenario.configspace,
             seed=scenario.seed,
         )
