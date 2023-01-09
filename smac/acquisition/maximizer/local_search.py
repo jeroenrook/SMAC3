@@ -219,18 +219,36 @@ class LocalSearch(AbstractAcquisitionMaximizer):
         else:
             additional_start_points = []
 
-        init_points = []
-        init_points_as_set: set[Configuration] = set()
-        for cand in itertools.chain(
+        candidates = itertools.chain(
             configs_previous_runs_sorted,
             previous_configs_sorted_by_cost,
             additional_start_points,
-        ):
-            if cand not in init_points_as_set:
-                init_points.append(cand)
-                init_points_as_set.add(cand)
+        ) 
+        init_points = self._unique_list(candidates)
 
         return init_points
+
+    @staticmethod
+    def _unique_list(elements: list | itertools.chain) -> list:
+        """
+        Returns the list with only unique elements while remaining the list order.
+
+        Parameters
+        ----------
+        elements : list | itertools.chain
+
+        Returns
+        -------
+        A list with unique elements with preserved order
+        """
+        return_list = []
+        return_list_as_set = set()
+        for e in elements:
+            if e not in return_list_as_set:
+                return_list.append(e)
+                return_list_as_set.add(e)
+
+        return return_list
 
     def _search(
         self,
