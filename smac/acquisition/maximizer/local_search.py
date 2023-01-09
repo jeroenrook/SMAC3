@@ -65,7 +65,7 @@ class LocalSearch(AbstractAcquisitionMaximizer):
             seed=seed,
         )
 
-        self._max_steps = max_steps
+        self._max_steps = max_steps if not None else np.inf
         self._n_steps_plateau_walk = n_steps_plateau_walk
         self._vectorization_min_obtain = vectorization_min_obtain
         self._vectorization_max_obtain = vectorization_max_obtain
@@ -423,7 +423,7 @@ class LocalSearch(AbstractAcquisitionMaximizer):
                     continue
 
                 if obtain_n[i] == 0 or improved[i]:
-                    obtain_n[i] = 2
+                    obtain_n[i] = self._vectorization_min_obtain
                 else:
                     obtain_n[i] = obtain_n[i] * 2
                     obtain_n[i] = min(obtain_n[i], self._vectorization_max_obtain)
@@ -434,7 +434,12 @@ class LocalSearch(AbstractAcquisitionMaximizer):
                             candidates[i] = neighbors_w_equal_acq[i][0]
                             neighbors_w_equal_acq[i] = []
                         n_no_plateau_walk[i] += 1
-                    if n_no_plateau_walk[i] >= self._n_steps_plateau_walk:
+
+                    if n_no_plateau_walk[i] >= self._n_steps_plateau_walk or local_search_steps[i] >= self._max_steps:
+                        message = f"Local search {i}: Stop search after walking {n_no_plateau_walk[i]} plateaus after {neighbors_looked_at[i]}."
+                        if local_search_steps[i] >= self._max_steps:
+                            message += f" Reached max_steps ({self._max_steps}) of local search."
+                        logger.debug(message)
                         active[i] = False
                         continue
 
