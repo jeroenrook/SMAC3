@@ -305,7 +305,7 @@ class SMSIntensifier(AbstractRacer):
 
         # LINES 3-7
         if self.stage in [IntensifierStage.RUN_FIRST_CONFIG, IntensifierStage.RUN_INCUMBENT]:
-            # CHANGED: workaround to handle increasing the incumbant that consists out of multiple configurations
+            # CHANGED: workaround to handle increasing the incumbent that consists out of multiple configurations
             if len(self.remaining_incumbent_runs) > 0:
                 runinfo = self.remaining_incumbent_runs.pop()
                 if self.stage == IntensifierStage.RUN_INCUMBENT:
@@ -1063,6 +1063,8 @@ class SMSIntensifier(AbstractRacer):
 
     def _next_iteration(self) -> None:
         """Updates tracking variables at the end of an intensification run."""
+        self.stats.update_average_configs_per_intensify(n_configs=self._chall_indx)
+
         # track iterations
         self.n_iters += 1
         self.iteration_done = True
@@ -1075,8 +1077,6 @@ class SMSIntensifier(AbstractRacer):
         self._chall_indx = 0
         self.elapsed_time = 0
         self._ta_time = 0.0
-
-        self.stats.update_average_configs_per_intensify(n_configs=self._chall_indx)
 
     def _get_hypervolume(self, points: np.ndarray, reference_point: np.ndarray = None):
         print(points, reference_point)

@@ -352,7 +352,8 @@ class LocalSearch(AcquisitionFunctionMaximizer):
         # function values to the correct local search run
         obtain_n = [self.vectorization_min_obtain] * num_candidates
         # Tracking the time it takes to compute the acquisition function
-        times = []
+        times = 0
+        old_times = []
 
         # Set up the neighborhood generators
         neighborhood_iterators = []
@@ -402,7 +403,8 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                 start_time = time.time()
                 acq_val = self.acquisition_function(neighbors)
                 end_time = time.time()
-                times.append(end_time - start_time)
+                times += (end_time - start_time)
+                old_times.append(end_time - start_time)
                 if np.ndim(acq_val.shape) == 0:
                     acq_val = np.asarray([acq_val])
 
@@ -468,7 +470,7 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                         # No improvement found in complete neighbourhood
                         # if len(neighbors_w_equal_acq[i]) != 0:
                         if neighbors_w_equal_acq_count[i] > 0:
-                            # TODO JG: We should randomly sample here right, but since order is random we already have this here?
+                            # TODO JG: We should randomly sample here, right, but since order is random we already have this here?
                             #  Since we only use the first, we do not need to save all the configurations!
                             candidates[i] = sampled_neighbor_w_equal_acq[i]
                             #neighbors_w_equal_acq[i] = []
@@ -492,11 +494,13 @@ class LocalSearch(AcquisitionFunctionMaximizer):
                     )
 
         self.logger.debug(
-            "Local searches took %s steps and looked at %s configurations. Computing the acquisition function in "
-            "vectorized for took %f seconds on average.",
+            "Local searches took %s steps and looked at %s configurations. Computing the acquisition function for "
+            "each search took %f (prev %f) seconds on average and each acquisition function call took %f seconds on average.",
             local_search_steps,
             neighbors_looked_at,
-            np.mean(times),
+            times/num_candidates,
+            np.mean(old_times),
+            times/np.sum(neighbors_looked_at),
         )
 
         return [(a, i) for a, i in zip(acq_val_candidates, candidates)]
@@ -790,6 +794,8 @@ class LocalAndSortedRandomSearch(AcquisitionFunctionMaximizer):
         num_points: int,
     ) -> List[Tuple[float, Configuration]]:
 
+        start_time = time.time()
+
         # Get configurations sorted by EI
         next_configs_by_random_search_sorted = self.random_search._maximize(
             runhistory,
@@ -818,6 +824,9 @@ class LocalAndSortedRandomSearch(AcquisitionFunctionMaximizer):
             str([[_[0], _[1].origin] for _ in next_configs_by_acq_value[:5]]),
         )
         # stats.acquisition_values.append([t[0] for t in next_configs_by_acq_value])  # TODO Debug
+
+        self.logger.debug(f"Total time used for acquisition function maximisation loop {time.time()-start_time}s")
+
         return next_configs_by_acq_value
 
 

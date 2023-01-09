@@ -182,6 +182,7 @@ class RunHistory(Mapping[RunKey, RunValue]):
     ) -> None:
         self.logger = PickableLoggerAdapter(self.__module__ + "." + self.__class__.__name__)
 
+
         # By having the data in a deterministic order we can do useful tests
         # when we serialize the data and can assume it's still in the same
         # order as it was added.

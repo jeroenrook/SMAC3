@@ -525,7 +525,7 @@ class SMBO(object):
             result=result,
         )
 
-        #TODO update population in stats
+        # CHANGED update population in stats
         if isinstance(self.incumbent, list):
             self.stats.population = []
             for config in self.incumbent:

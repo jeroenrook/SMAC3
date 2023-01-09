@@ -89,7 +89,7 @@ class BaseEPM:
         self.max_marginalized_instance_features = max_marginalized_instance_features
 
         if instance_features is not None:
-            # TODO: maybe sample a different set of instances at each update call?
+            # TODO maybe sample a different set of instances at each update call?
             instance_limit = min(self.max_marginalized_instance_features, self.instance_features.shape[0])
             self.instance_features = self.instance_features[:instance_limit, :]
             self.n_feats = instance_features.shape[1]

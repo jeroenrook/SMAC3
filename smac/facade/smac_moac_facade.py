@@ -60,9 +60,9 @@ class SMAC4MOAC(SMAC4AC):
             logging.log(logging.WARN, "Replacing intensifier argument with 'SMSIntensifier'")
         kwargs["intensifier"] = SMSIntensifier
         intensifier_kwargs = kwargs.get("intensifier_kwargs", dict())
-        intensifier_kwargs["min_chall"] = 1
         kwargs["intensifier_kwargs"] = intensifier_kwargs
-        scenario.intensification_percentage = 1e-10
+        # intensifier_kwargs["min_chall"] = 1
+        # scenario.intensification_percentage = 1e-10
 
         if kwargs.get("model") is None:
             model_class = RandomForestWithInstances
@@ -70,12 +70,12 @@ class SMAC4MOAC(SMAC4AC):
 
             # == static RF settings
             model_kwargs = kwargs.get("model_kwargs", dict())
-            model_kwargs["num_trees"] = model_kwargs.get("num_trees", 10)
-            model_kwargs["do_bootstrapping"] = model_kwargs.get("do_bootstrapping", True)
-            model_kwargs["ratio_features"] = model_kwargs.get("ratio_features", 1.0)
-            model_kwargs["min_samples_split"] = model_kwargs.get("min_samples_split", 2)
-            model_kwargs["min_samples_leaf"] = model_kwargs.get("min_samples_leaf", 1)
-            model_kwargs["log_y"] = model_kwargs.get("log_y", True)
+            # model_kwargs["num_trees"] = model_kwargs.get("num_trees", 10)
+            # model_kwargs["do_bootstrapping"] = model_kwargs.get("do_bootstrapping", True)
+            # model_kwargs["ratio_features"] = model_kwargs.get("ratio_features", 1.0)
+            # model_kwargs["min_samples_split"] = model_kwargs.get("min_samples_split", 2)
+            # model_kwargs["min_samples_leaf"] = model_kwargs.get("min_samples_leaf", 1)
+            # model_kwargs["log_y"] = model_kwargs.get("log_y", True)
             model_kwargs["max_marginalized_instance_features"] = model_kwargs.get("max_marginalized_instance_features", 100)
             kwargs["model_kwargs"] = model_kwargs
 
@@ -87,9 +87,9 @@ class SMAC4MOAC(SMAC4AC):
         kwargs["runhistory2epm"] = kwargs.get("runhistory2epm", RunHistory2EPM4Cost)  # TODO changed. MO already normalizes.
 
         # assumes random chooser for random configs
-        random_config_chooser_kwargs = kwargs.get("random_configuration_chooser_kwargs", dict())
-        random_config_chooser_kwargs["prob"] = random_config_chooser_kwargs.get("prob", 0.2)
-        kwargs["random_configuration_chooser_kwargs"] = random_config_chooser_kwargs
+        # random_config_chooser_kwargs = kwargs.get("random_configuration_chooser_kwargs", dict())
+        # random_config_chooser_kwargs["prob"] = random_config_chooser_kwargs.get("prob", 0.2)
+        # kwargs["random_configuration_chooser_kwargs"] = random_config_chooser_kwargs
 
         # better improve acquisition function optimization
         # 1. increase number of sls iterations
@@ -111,7 +111,7 @@ class SMAC4MOAC(SMAC4AC):
 
         # better improve acquisition function optimization
         # 2. more randomly sampled configurations
-        self.solver.scenario.acq_opt_challengers = 10000  # type: ignore[attr-defined] # noqa F821
+        self.solver.scenario.acq_opt_challengers = 5000  # type: ignore[attr-defined] # noqa F821
 
         # activate predict incumbent
         self.solver.epm_chooser.predict_x_best = True

@@ -46,6 +46,7 @@ from smac.optimizer.acquisition import (
     LogEI,
     PriorAcquisitionFunction,
     EHVI,
+    PHVI,
 )
 from smac.optimizer.acquisition.maximizer import (
     AcquisitionFunctionMaximizer,
@@ -258,17 +259,18 @@ class SMAC4AC(object):
             self.output_dir = cast(str, scenario.output_dir_for_this_run)  # type: ignore[attr-defined] # noqa F821
         rng = cast(np.random.RandomState, rng)
 
-        if (
-            scenario.deterministic is True  # type: ignore[attr-defined] # noqa F821
-            and getattr(scenario, "tuner_timeout", None) is None
-            and scenario.run_obj == "quality"  # type: ignore[attr-defined] # noqa F821
-        ):
-            self.logger.info(
-                "Optimizing a deterministic scenario for quality without a tuner timeout - will make "
-                "SMAC deterministic and only evaluate one configuration per iteration!"
-            )
-            scenario.intensification_percentage = 1e-10  # type: ignore[attr-defined] # noqa F821
-            scenario.min_chall = 1  # type: ignore[attr-defined] # noqa F821
+        # TODO CHANGED
+        # if (
+        #     scenario.deterministic is True  # type: ignore[attr-defined] # noqa F821
+        #     and getattr(scenario, "tuner_timeout", None) is None
+        #     and scenario.run_obj == "quality"  # type: ignore[attr-defined] # noqa F821
+        # ):
+        #     self.logger.info(
+        #         "Optimizing a deterministic scenario for quality without a tuner timeout - will make "
+        #         "SMAC deterministic and only evaluate one configuration per iteration!"
+        #     )
+        #     scenario.intensification_percentage = 1e-10  # type: ignore[attr-defined] # noqa F821
+        #     scenario.min_chall = 1  # type: ignore[attr-defined] # noqa F821
 
         scenario.write()
 
@@ -369,7 +371,7 @@ class SMAC4AC(object):
             else:
                 acquisition_function_instance = EI(**acq_def_kwargs)  # type: ignore[arg-type] # noqa F821
         elif inspect.isclass(acquisition_function):
-            if issubclass(acquisition_function, EHVI):
+            if issubclass(acquisition_function, EHVI) or issubclass(acquisition_function, PHVI):
                 acq_def_kwargs["stats"] = self.stats
                 acq_def_kwargs["runhistory"] = runhistory
 

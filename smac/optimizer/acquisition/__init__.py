@@ -205,24 +205,6 @@ class EHVI(AbstractAcquisitionFunction):
         partitioning = NondominatedPartitioning(torch.asarray(ref_point), torch.asarray(population_costs))
         self._ehvi = ExpectedHypervolumeImprovement(bomodel, ref_point, partitioning)
 
-
-    def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
-        """
-        Compute the hypervolume
-
-        Parameters
-        ----------
-        points : np.ndarray
-            A 2d numpy array. 1st dimension is an entity and the 2nd dimension are the costs
-        reference_point : list
-
-        Return
-        ------
-        hypervolume: float
-        """
-        hv = pygmo.hypervolume(points)
-        return hv.compute(hv.refpoint(offset=1))  # TODO: Fix reference points
-
     def _compute(self, X: np.ndarray) -> np.ndarray:
         """Computes the EHVI values and its derivatives.
 
@@ -257,6 +239,105 @@ class EHVI(AbstractAcquisitionFunction):
         #     ehvi[i] = self.get_hypervolume(population_costs + [indiv]) - population_hv
         #
         # return ehvi.reshape(-1, 1)
+
+class PHVI(AbstractAcquisitionFunction):
+    def __init__(self, model: BaseEPM, stats: Stats, runhistory: RunHistory):
+        """Computes for a given x the predicted hypervolume improvement as
+        acquisition value.
+
+        Parameters
+        ----------
+        model : BaseEPM
+            A model that implements at least
+                 - predict_marginalized_over_instances(X)
+        """
+        super(PHVI, self).__init__(model)
+        self.long_name = "Expected Hypervolume improvement"
+        self.stats = stats
+        self.runhistory = runhistory
+        self._required_updates = ("model",)
+        # self._ehvi = None
+        self.population_hv = None
+        self.population_costs = None
+
+    def update(self, **kwargs: Any) -> None:
+        super(PHVI, self).update(**kwargs)
+
+        #Update EHVI
+        # Get points of population
+        population_configs = [self.runhistory.ids_config[config_id] for config_id in self.stats.population]
+        # population_costs_actual = [self.runhistory.get_cost(c, aggregate=False) for c in population_configs]
+        # Prediction all
+        population_X = np.array([config.get_array() for config in population_configs])
+        population_costs, _ = self.model.predict_marginalized_over_instances(population_X)
+
+        # Compute HV
+        population_hv = self.get_hypervolume(population_costs, (1.1, 1.1))
+
+        self.population_costs = population_costs
+        self.population_hv = population_hv
+
+        self.logger.info(f"NEW POPULATION HV: {population_hv}")
+
+
+
+    def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
+        """
+        Compute the hypervolume
+
+        Parameters
+        ----------
+        points : np.ndarray
+            A 2d numpy array. 1st dimension is an entity and the 2nd dimension are the costs
+        reference_point : list
+
+        Return
+        ------
+        hypervolume: float
+        """
+        hv = pygmo.hypervolume(points)
+        if reference_point is None:
+            reference_point = hv.refpoint(offset=1)
+        return hv.compute(reference_point)  # TODO: Fix reference points
+
+    def _compute(self, X: np.ndarray) -> np.ndarray:
+        """Computes the PHVI values and its derivatives.
+
+        Parameters
+        ----------
+        X: np.ndarray(N, D), The input points where the acquisition function
+            should be evaluated. The dimensionality of X is (N, D), with N as
+            the number of points to evaluate at and D is the number of
+            dimensions of one X.
+
+        Returns
+        -------
+        np.ndarray(N,1)
+            Expected HV Improvement of X
+        """
+        if len(X.shape) == 1:
+            X = X[:, np.newaxis]
+
+        # TODO non-dominated sorting of costs. Compute EHVI only until the EHVI is not expected to improve anymore.
+        # Option 1: Supplement missing instances of population with acq. function to get predicted performance over
+        # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
+        # Option 2: Only on instances of population
+        # Option 3: EVHI per instance and aggregate afterwards
+        mean, var_ = self.model.predict_marginalized_over_instances(X)
+
+        phvi = np.zeros(len(X))
+        for i, indiv in enumerate(mean):
+            phvi[i] = self.get_hypervolume(list(self.population_costs) + [indiv], (1.1, 1.1)) - self.population_hv
+
+        # if len(X) == 10000:
+        #     for op in ["max", "min", "mean", "median"]:
+        #         val = getattr(np, op)(phvi)
+        #         print(f"{op:6} - {val}")
+        #     time.sleep(1.5)
+
+        return phvi.reshape(-1, 1)
+
+
 
 
 class IntegratedAcquisitionFunction(AbstractAcquisitionFunction):
