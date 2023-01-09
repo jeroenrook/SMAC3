@@ -56,7 +56,7 @@ class AbstractIntensifier:
         scenario: Scenario,
         n_seeds: int | None = None,
         max_config_calls: int | None = None,
-        max_incumbents: int = 10,
+        max_incumbents: int = 10,  # TODO set in MO facade
         seed: int | None = None,
     ):
         self._scenario = scenario
@@ -541,7 +541,7 @@ class AbstractIntensifier:
             all_incumbent_isb_keys.append(self.get_instance_seed_budget_keys(incumbent))
 
         # We compare the incumbents now and only return the ones on the pareto front
-        new_incumbents = calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
+        new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
         new_incumbent_ids = [rh.get_config_id(c) for c in new_incumbents]
 
         if len(previous_incumbents) == len(new_incumbents):
@@ -551,22 +551,10 @@ class AbstractIntensifier:
                 return
             else:
                 # In this case, we have to determine which config replaced which incumbent and reject it
-                removed_incumbent_id = list(set(previous_incumbent_ids) - set(new_incumbent_ids))[0]
-                removed_incumbent_hash = get_config_hash(rh.get_config(removed_incumbent_id))
-                self._add_rejected_config(removed_incumbent_id)
+                # We will remove the oldest configuration (the one with the lowest id) because
+                # set orders the ids ascending.
+                self._remove_incumbent(config=config, previous_incumbent_ids=previous_incumbent_ids, new_incumbent_ids=new_incumbent_ids)
 
-                if removed_incumbent_id == config_id:
-                    logger.debug(
-                        f"Rejected config {config_hash} because it is not better than the incumbents on "
-                        f"{len(config_isb_keys)} instances."
-                    )
-                else:
-                    self._remove_rejected_config(config_id)
-                    logger.info(
-                        f"Added config {config_hash} and rejected config {removed_incumbent_hash} as incumbent because "
-                        f"it is not better than the incumbents on {len(config_isb_keys)} instances:"
-                    )
-                    print_config_changes(rh.get_config(removed_incumbent_id), config, logger=logger)
         elif len(previous_incumbents) < len(new_incumbents):
             # Config becomes a new incumbent; nothing is rejected in this case
             self._remove_rejected_config(config_id)
@@ -587,6 +575,7 @@ class AbstractIntensifier:
         # Cut incumbents: We only want to keep a specific number of incumbents
         # We use the crowding distance for that
         if len(new_incumbents) > self._max_incumbents:
+            # TODO adjust. Other option: statistical test or HV
             new_incumbents = sort_by_crowding_distance(rh, new_incumbents, all_incumbent_isb_keys)
             new_incumbents = new_incumbents[: self._max_incumbents]
 
@@ -601,6 +590,74 @@ class AbstractIntensifier:
             )
 
         self._update_trajectory(new_incumbents)
+
+    def _remove_incumbent(self, config: Configuration, previous_incumbent_ids: list[int], new_incumbent_ids: list[int]) -> None:
+        """Remove incumbents if population is too big
+
+        If new and old incumbents differ.
+        Remove the oldest (the one with the lowest id) from the set of new and old incumbents.
+        If the current config is not discarded, it is added to the new incumbents.
+
+        Parameters
+        ----------
+        config : Configuration
+            Newly evaluated trial
+        previous_incumbent_ids : list[int]
+            Incumbents before
+        new_incumbent_ids : list[int]
+            Incumbents considering/maybe including config
+        """
+        assert len(previous_incumbent_ids) == len(new_incumbent_ids)
+        assert previous_incumbent_ids != new_incumbent_ids
+        rh = self.runhistory
+        config_isb_keys = self.get_instance_seed_budget_keys(config)
+        config_id = rh.get_config_id(config)
+        config_hash = get_config_hash(config)
+
+        removed_incumbent_id = list(set(previous_incumbent_ids) - set(new_incumbent_ids))[0]
+        removed_incumbent_hash = get_config_hash(rh.get_config(removed_incumbent_id))
+        self._add_rejected_config(removed_incumbent_id)
+
+        if removed_incumbent_id == config_id:
+            logger.debug(
+                f"Rejected config {config_hash} because it is not better than the incumbents on "
+                f"{len(config_isb_keys)} instances."
+            )
+        else:
+            self._remove_rejected_config(config_id)
+            logger.info(
+                f"Added config {config_hash} and rejected config {removed_incumbent_hash} as incumbent because "
+                f"it is not better than the incumbents on {len(config_isb_keys)} instances:"
+            )
+            print_config_changes(rh.get_config(removed_incumbent_id), config, logger=logger)
+
+    def _calculate_pareto_front(
+        self,
+        runhistory: RunHistory,
+        configs: list[Configuration],
+        config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]],
+    ) -> list[Configuration]:
+        """Compares the passed configurations and returns only the ones on the pareto front.
+
+        Parameters
+        ----------
+        runhistory : RunHistory
+            The runhistory containing the given configurations.
+        configs : list[Configuration]
+            The configurations from which the Pareto front should be computed.
+        config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]]
+            The instance-seed budget keys for the configurations on the basis of which the Pareto front should be computed.
+
+        Returns
+        -------
+        pareto_front : list[Configuration]
+            The pareto front computed from the given configurations.
+        """
+        return calculate_pareto_front(
+            runhistory=runhistory,
+            configs=configs,
+            config_instance_seed_budget_keys=config_instance_seed_budget_keys,
+        )
 
     @abstractmethod
     def __iter__(self) -> Iterator[TrialInfo]:

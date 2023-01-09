@@ -50,7 +50,7 @@ def calculate_pareto_front(
     configs: list[Configuration],
     config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]],
 ) -> list[Configuration]:
-    """Compares the passed configurations and returns only the ones on the pareto front.
+    """Calculate pareto front based on non-dominance
 
     Parameters
     ----------
