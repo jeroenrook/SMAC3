@@ -224,17 +224,22 @@ class LocalSearch(AbstractAcquisitionMaximizer):
 
         return init_points
 
-    def _create_sort_keys(self, costs) -> list[list[float]]:
-        """Create sort keys to sort configs
+    def _create_sort_keys(self, costs: np.array) -> list[list[float]]:
+        """Sort costs by random scalarization
 
         In case of the predictive model returning the prediction for more than one objective per configuration
         (for example multi-objective or EIPS) it is not immediately clear how to sort according to the cost
         of a configuration. Therefore, we simply follow the ParEGO approach and use a random scalarization.
 
+        Parameters
+        ----------
+        costs : np.array
+            Cost(s) per config
+
         Returns
         -------        
         list[list[float]]
-            Sorting ids for lexsort
+            Sorting sequence for lexsort
         """
         weights = np.array([self._rng.rand() for _ in range(costs.shape[1])])
         weights = weights / np.sum(weights)
