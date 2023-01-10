@@ -96,6 +96,7 @@ class Intensifier(AbstractIntensifier):
           queue.
         - If all incumbents are evaluated on the same trials, a new trial is added to one of the incumbents.
         - Only challengers which are not rejected/running/incumbent are intensified by N*2.
+        - If the intensifier cannot find any new trials for n _retries, exit
 
         Returns
         -------
