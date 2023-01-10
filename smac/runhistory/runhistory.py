@@ -137,6 +137,10 @@ class RunHistory(Mapping[TrialKey, TrialValue]):
         self._n_objectives: int = -1
         self._objective_bounds: list[tuple[float, float]] = []
 
+        # Store incumbents. Gets updated whenever the incumbents in the
+        # intensifier are updated
+        self._incumbents: list[Configuration] = []
+
     def __contains__(self, k: object) -> bool:
         """Dictionary semantics for `k in runhistory`."""
         return k in self._data
@@ -156,6 +160,14 @@ class RunHistory(Mapping[TrialKey, TrialValue]):
     def __eq__(self, other: Any) -> bool:
         """Enables to check equality of runhistory if the run is continued."""
         return self._data == other._data
+
+    @property
+    def incumbents(self) -> list[Configuration]:
+        return self._incumbents
+
+    @incumbents.setter
+    def incumbents(self, incumbents: list[Configuration]) -> None:
+        self._incumbents = incumbents
 
     def empty(self) -> bool:
         """Check whether the RunHistory is empty.
