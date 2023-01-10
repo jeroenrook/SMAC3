@@ -88,10 +88,19 @@ class AbstractIntensifier:
         self._instance_seed_keys_validation: list[InstanceSeedKey] | None = None
 
         # Incumbent variables
-        self._incumbents: list[Configuration] = []
+        self.incumbents: list[Configuration] = []
         self._incumbents_changed = 0
         self._rejected_config_ids: list[int] = []
         self._trajectory: list[TrajectoryItem] = []
+
+    @property
+    def incumbents(self) -> list[Configuration]:
+        return self._incumbents
+
+    @incumbents.setter
+    def incumbents(self, incumbents: list[Configuration]) -> None:
+        self._incumbents = incumbents
+        self.runhistory.incumbents = incumbents
 
     @property
     def meta(self) -> dict[str, Any]:
@@ -354,11 +363,11 @@ class AbstractIntensifier:
         if self._scenario.count_objectives() > 1:
             raise ValueError("Cannot get a single incumbent for multi-objective optimization.")
 
-        if len(self._incumbents) == 0:
+        if len(self.incumbents) == 0:
             return None
 
-        assert len(self._incumbents) == 1
-        return self._incumbents[0]
+        assert len(self.incumbents) == 1
+        return self.incumbents[0]
 
     def get_incumbents(self, sort_by: str | None = None) -> list[Configuration]:
         """Returns the incumbents (points on the pareto front) of the runhistory as copy. In case of a single-objective
@@ -375,11 +384,11 @@ class AbstractIntensifier:
         rh = self.runhistory
 
         if sort_by == "cost":
-            return list(sorted(self._incumbents, key=lambda config: rh._cost_per_config[rh.get_config_id(config)]))
+            return list(sorted(self.incumbents, key=lambda config: rh._cost_per_config[rh.get_config_id(config)]))
         elif sort_by == "num_trials":
-            return list(sorted(self._incumbents, key=lambda config: len(rh.get_trials(config))))
+            return list(sorted(self.incumbents, key=lambda config: len(rh.get_trials(config))))
         elif sort_by is None:
-            return list(self._incumbents)
+            return list(self.incumbents)
         else:
             raise ValueError(f"Unknown sort_by value: {sort_by}.")
 
@@ -686,7 +695,7 @@ class AbstractIntensifier:
         filename.parent.mkdir(parents=True, exist_ok=True)
 
         data = {
-            "incumbent_ids": [self.runhistory.get_config_id(config) for config in self._incumbents],
+            "incumbent_ids": [self.runhistory.get_config_id(config) for config in self.incumbents],
             "rejected_config_ids": self._rejected_config_ids,
             "incumbents_changed": self._incumbents_changed,
             "trajectory": [dataclasses.asdict(item) for item in self._trajectory],
@@ -715,7 +724,7 @@ class AbstractIntensifier:
         if self._runhistory is not None:
             self.runhistory = self._runhistory
 
-        self._incumbents = [self.runhistory.get_config(config_id) for config_id in data["incumbent_ids"]]
+        self.incumbents = [self.runhistory.get_config(config_id) for config_id in data["incumbent_ids"]]
         self._incumbents_changed = data["incumbents_changed"]
         self._rejected_config_ids = data["rejected_config_ids"]
         self._trajectory = [TrajectoryItem(**item) for item in data["trajectory"]]
@@ -726,7 +735,7 @@ class AbstractIntensifier:
         config_ids = [rh.get_config_id(c) for c in configs]
         costs = [rh.average_cost(c, normalize=False) for c in configs]
 
-        self._incumbents = configs
+        self.incumbents = configs
         self._incumbents_changed += 1
         self._trajectory.append(
             TrajectoryItem(
