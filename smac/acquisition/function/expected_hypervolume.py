@@ -149,33 +149,33 @@ class EHVI(AbstractAcquisitionFunction):
         # return ehvi.reshape(-1, 1)
 
 class PHVI(AbstractAcquisitionFunction):
-    def __init__(self, model: BaseEPM, stats: Stats, runhistory: RunHistory):
+    def __init__(self):
         """Computes for a given x the predicted hypervolume improvement as
         acquisition value.
-
-        Parameters
-        ----------
-        model : BaseEPM
-            A model that implements at least
-                 - predict_marginalized_over_instances(X)
         """
-        super(PHVI, self).__init__(model)
-        self.long_name = "Expected Hypervolume improvement"
-        self.stats = stats
-        self.runhistory = runhistory
+        super(PHVI, self).__init__()
         self._required_updates = ("model",)
-        # self._ehvi = None
         self.population_hv = None
         self.population_costs = None
 
-    def update(self, **kwargs: Any) -> None:
+    @property
+    def name(self) -> str:
+        return "Predicted Hypervolume Improvement"
+
+    def _update(self, **kwargs: Any) -> None:
         super(PHVI, self).update(**kwargs)
 
-        #Update EHVI
-        # Get points of population
-        population_configs = [self.runhistory.ids_config[config_id] for config_id in self.stats.population]
-        # population_costs_actual = [self.runhistory.get_cost(c, aggregate=False) for c in population_configs]
+        # TODO abstract this away in a general HVI class
+        incumbents: list[Configuration] = kwargs.get("incumbents", None)
+        if incumbents is None:
+            raise ValueError(f"Incumbents are not passed properly.")
+        if len(incumbents) > 0:
+            raise ValueError(f"No incumbents here. Did the intensifier properly "
+                                "update the incumbents in the runhistory?")
+
+        # Update EHVI
         # Prediction all
+        population_configs = incumbents
         population_X = np.array([config.get_array() for config in population_configs])
         population_costs, _ = self.model.predict_marginalized_over_instances(population_X)
 
@@ -185,9 +185,7 @@ class PHVI(AbstractAcquisitionFunction):
         self.population_costs = population_costs
         self.population_hv = population_hv
 
-        self.logger.info(f"NEW POPULATION HV: {population_hv}")
-
-
+        logger.info(f"New population HV: {population_hv}")
 
     def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
         """
