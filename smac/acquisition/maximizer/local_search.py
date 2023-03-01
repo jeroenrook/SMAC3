@@ -65,7 +65,7 @@ class LocalSearch(AbstractAcquisitionMaximizer):
             seed=seed,
         )
 
-        self._max_steps = max_steps if not None else np.inf
+        self._max_steps = max_steps if max_steps is not None else np.inf
         self._n_steps_plateau_walk = n_steps_plateau_walk
         self._vectorization_min_obtain = vectorization_min_obtain
         self._vectorization_max_obtain = vectorization_max_obtain
