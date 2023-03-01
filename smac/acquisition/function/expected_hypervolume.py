@@ -169,11 +169,11 @@ class PHVI(AbstractAcquisitionFunction):
         incumbents: list[Configuration] = kwargs.get("incumbents", None)
         if incumbents is None:
             raise ValueError(f"Incumbents are not passed properly.")
-        if len(incumbents) > 0:
+        if len(incumbents) == 0:
             raise ValueError(f"No incumbents here. Did the intensifier properly "
                                 "update the incumbents in the runhistory?")
 
-        # Update EHVI
+        # Update PHVI
         # Prediction all
         population_configs = incumbents
         population_X = np.array([config.get_array() for config in population_configs])
