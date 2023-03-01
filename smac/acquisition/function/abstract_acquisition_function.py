@@ -50,7 +50,7 @@ class AbstractAcquisitionFunction:
 
         This method will be called after fitting the model, but before maximizing the acquisition
         function. As an examples, EI uses it to update the current fmin. The default implementation only updates the
-        attributes of the acqusition function which are already present.
+        attributes of the acquisition function which are already present.
 
         Calls `_update` to update the acquisition function attributes.
 
@@ -65,7 +65,7 @@ class AbstractAcquisitionFunction:
         self._update(**kwargs)
 
     def _update(self, **kwargs: Any) -> None:
-        """Update acsquisition function attributes
+        """Update acquisition function attributes
 
         Might be different for each child class.
         """

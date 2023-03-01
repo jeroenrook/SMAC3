@@ -56,7 +56,7 @@ class _ModelProxy(Model, ABC):
         # predict
         # start_time = time.time()
         # print(f"Start predicting ")
-        mean, var_ = self.model.predict_marginalized_over_instances(X)
+        mean, var_ = self.model.predict_marginalized(X)
         # print(f"Done in {time.time() - start_time}s")
         post = _PosteriorProxy()
         post.mean = torch.asarray(mean).reshape(X.shape[0], 1, -1)  # 2D -> 3D
@@ -79,12 +79,12 @@ class EHVI(AbstractAcquisitionFunction):
         # and store incumbents in runhistory -or- work
         # with a callback. This class can own a callback
         # updating the partitioning and the ehv model
-        super(EHVI, self).update(**kwargs)
+        super(EHVI, self)._update(**kwargs)
 
         incumbents: list[Configuration] = kwargs.get("incumbents", None)
         if incumbents is None:
             raise ValueError(f"Incumbents are not passed properly.")
-        if len(incumbents) > 0:
+        if len(incumbents) == 0:
             raise ValueError(f"No incumbents here. Did the intensifier properly "
                                 "update the incumbents in the runhistory?")
 
@@ -92,7 +92,7 @@ class EHVI(AbstractAcquisitionFunction):
         # Prediction all
         population_configs = incumbents
         population_X = np.array([config.get_array() for config in population_configs])
-        population_costs, _ = self.model.predict_marginalized_over_instances(population_X)
+        population_costs, _ = self.model.predict_marginalized(population_X)
 
         # Compute HV
         # population_hv = self.get_hypervolume(population_costs)
@@ -163,7 +163,7 @@ class PHVI(AbstractAcquisitionFunction):
         return "Predicted Hypervolume Improvement"
 
     def _update(self, **kwargs: Any) -> None:
-        super(PHVI, self).update(**kwargs)
+        super(PHVI, self)._update(**kwargs)
 
         # TODO abstract this away in a general HVI class
         incumbents: list[Configuration] = kwargs.get("incumbents", None)
@@ -177,7 +177,7 @@ class PHVI(AbstractAcquisitionFunction):
         # Prediction all
         population_configs = incumbents
         population_X = np.array([config.get_array() for config in population_configs])
-        population_costs, _ = self.model.predict_marginalized_over_instances(population_X)
+        population_costs, _ = self.model.predict_marginalized(population_X)
 
         # Compute HV
         population_hv = self.get_hypervolume(population_costs, (1.1, 1.1))
@@ -229,7 +229,7 @@ class PHVI(AbstractAcquisitionFunction):
         # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
         # Option 2: Only on instances of population
         # Option 3: EVHI per instance and aggregate afterwards
-        mean, var_ = self.model.predict_marginalized_over_instances(X)
+        mean, var_ = self.model.predict_marginalized(X)
 
         phvi = np.zeros(len(X))
         for i, indiv in enumerate(mean):
