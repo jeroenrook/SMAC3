@@ -6,7 +6,9 @@ from smac.acquisition.function.expected_improvement import EI
 from smac.facade.abstract_facade import AbstractFacade
 from smac.initial_design.default_design import DefaultInitialDesign
 from smac.intensifier.intensifier import Intensifier
+from smac.intensifier.multi_objective_intensifier import MOIntensifier
 from smac.model.random_forest.random_forest import RandomForest
+from smac.model.multi_objective_model import MultiObjectiveModel
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
 from smac.random_design.probability_design import ProbabilityRandomDesign
 from smac.runhistory.encoder.encoder import RunHistoryEncoder
@@ -53,27 +55,53 @@ class MultiObjectiveFacade(AbstractFacade):
         pca_components : float, defaults to 4
             Number of components to keep when using PCA to reduce dimensionality of instance features.
         """
-        return RandomForest(
-            configspace=scenario.configspace,
-            n_trees=n_trees,
-            ratio_features=ratio_features,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            max_depth=max_depth,
-            bootstrapping=bootstrapping,
-            log_y=False,
-            instance_features=scenario.instance_features,
-            pca_components=pca_components,
-            seed=scenario.seed,
+
+        models = []
+        for objective in scenario.objectives:
+            models.append(
+                RandomForest(
+                    configspace=scenario.configspace,
+                    n_trees=n_trees,
+                    ratio_features=ratio_features,
+                    min_samples_split=min_samples_split,
+                    min_samples_leaf=min_samples_leaf,
+                    max_depth=max_depth,
+                    bootstrapping=bootstrapping,
+                    log_y=False,
+                    instance_features=scenario.instance_features,
+                    pca_components=pca_components,
+                    seed=scenario.seed,
+                )
+            )
+
+        return MultiObjectiveModel(models=models, objectives=scenario.objectives)
+
+    @staticmethod
+    def get_intensifier(  # type: ignore
+            scenario: Scenario,
+            *,
+            max_config_calls: int = 3,
+            max_incumbents: int = 10,
+    ) -> Intensifier:
+        """Returns ``MOIntensifier`` as intensifier. Uses the default configuration for ``race_against``.
+
+        Parameters
+        ----------
+        scenario : Scenario
+        max_config_calls : int, defaults to 3
+            Maximum number of configuration evaluations. Basically, how many instance-seed keys should be max evaluated
+            for a configuration.
+        max_incumbents : int, defaults to 10
+            How many incumbents to keep track of in the case of multi-objective.
+        """
+        return MOIntensifier(
+            scenario=scenario,
+            max_config_calls=max_config_calls,
+            max_incumbents=max_incumbents,
         )
 
     @staticmethod
-    # TODO update intensifier
-    def get_intensifier(scenario: Scenario) -> AbstractIntensifier:
-        return super().get_intensifier(scenario)
-
-    @staticmethod
-    # TODO update acquisition function
+    # TODO update acquisition function with EIHV and PIHV
     def get_acquisition_function(  # type: ignore
         scenario: Scenario,
         *,
@@ -173,12 +201,9 @@ class MultiObjectiveFacade(AbstractFacade):
             Weights for averaging the objectives in a weighted manner. Must be of the same length as the number of
             objectives.
         """
-        return NoAggregationStrategy(
-            scenario=scenario,
-        )
+        return NoAggregationStrategy()
 
     @staticmethod
-    # TODO update rh encoder
     def get_runhistory_encoder(scenario: Scenario) -> RunHistoryEncoder:
-        """Returns the default runhistory encoder."""
-        return RunHistoryEncoder(scenario)
+        """Returns the default runhistory encoder with native multi objective support enabled."""
+        return RunHistoryEncoder(scenario, native_multi_objective=True)
