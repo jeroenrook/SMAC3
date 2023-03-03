@@ -62,7 +62,7 @@ class AbstractIntensifier:
         self._scenario = scenario
         self._config_selector: ConfigSelector | None = None
         self._config_generator: Iterator[ConfigSelector] | None = None
-        self._runhistory: RunHistory | None = None
+        self._runhistory: RunHistory | None = RunHistory
 
         if seed is None:
             seed = self._scenario.seed
@@ -406,7 +406,7 @@ class AbstractIntensifier:
         incumbents = self.get_incumbents()
 
         if len(incumbents) > 0:
-            # We want to calculate the smallest set of trials that is used by all incumbents
+            # We want to calculate the largest set of trials that is used by all incumbents
             # Reason: We can not fairly compare otherwise
             incumbent_isb_keys = [self.get_instance_seed_budget_keys(incumbent, compare) for incumbent in incumbents]
             instances = list(set.intersection(*map(set, incumbent_isb_keys)))  # type: ignore
@@ -528,6 +528,7 @@ class AbstractIntensifier:
             )
 
             # The config has to go to a queue now as it is a challenger and a potential incumbent
+            #TODO JG find out where it is decided to continue with the challenger
             return
         else:
             # If all instances are available and the config is incumbent and even evaluated on more trials
@@ -548,6 +549,13 @@ class AbstractIntensifier:
         all_incumbent_isb_keys = []
         for incumbent in incumbents:
             all_incumbent_isb_keys.append(self.get_instance_seed_budget_keys(incumbent))
+
+        #TODO JG it is guaruanteed that the challenger has ran on the intersection of isb_keys
+        # of the incumbents, however this is not the case in this part of the code.
+        # Here, all the runs of each incumbent used. Maybe the intensifier ensures that the incumbents
+        # have ran on the same isb keys in the first place?
+
+        #TODO JG get intersection for all incumbent_isb_keys and check if it breaks budget.
 
         # We compare the incumbents now and only return the ones on the pareto front
         new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
@@ -570,7 +578,7 @@ class AbstractIntensifier:
             logger.info(
                 f"Config {config_hash} is a new incumbent. " f"Total number of incumbents: {len(new_incumbents)}."
             )
-        else:
+        else:  # len(previous_incumbents) > len(new_incumbents)
             # There might be situations that the incumbents might be removed because of updated cost information of
             # config
             for incumbent in previous_incumbents:
@@ -584,21 +592,26 @@ class AbstractIntensifier:
         # Cut incumbents: We only want to keep a specific number of incumbents
         # We use the crowding distance for that
         if len(new_incumbents) > self._max_incumbents:
-            # TODO adjust. Other option: statistical test or HV
-            new_incumbents = sort_by_crowding_distance(rh, new_incumbents, all_incumbent_isb_keys)
-            new_incumbents = new_incumbents[: self._max_incumbents]
-
-            # or random?
-            # idx = self._rng.randint(0, len(new_incumbents))
-            # del new_incumbents[idx]
-            # del new_incumbent_ids[idx]
-
-            logger.info(
-                f"Removed one incumbent using crowding distance because more than {self._max_incumbents} are "
-                "available."
-            )
+            new_incumbents = self._cut_incumbents(new_incumbents, all_incumbent_isb_keys)
+            #TODO JG adjust. Other option: statistical test or HV (SMS-EMOA reduce function)
 
         self._update_trajectory(new_incumbents)
+
+    def _cut_incumbents(self, incumbent_ids: list[int], all_incumbent_isb_keys: list[list[InstanceSeedBudgetKey]]) -> list[int]:
+        new_incumbents = sort_by_crowding_distance(self.runhistory, incumbent_ids, all_incumbent_isb_keys)
+        new_incumbents = new_incumbents[: self._max_incumbents]
+
+        # or random?
+        # idx = self._rng.randint(0, len(new_incumbents))
+        # del new_incumbents[idx]
+        # del new_incumbent_ids[idx]
+
+        logger.info(
+            f"Removed one incumbent using crowding distance because more than {self._max_incumbents} are "
+            "available."
+        )
+
+        return new_incumbents
 
     def _remove_incumbent(self, config: Configuration, previous_incumbent_ids: list[int], new_incumbent_ids: list[int]) -> None:
         """Remove incumbents if population is too big
@@ -684,6 +697,18 @@ class AbstractIntensifier:
         """Sets the state of the intensifier. Used to restore the state of the intensifier when continuing a run."""
         pass
 
+    def get_save_data(self) -> dict:
+        data = {
+            "incumbent_ids": [self.runhistory.get_config_id(config) for config in
+                              self.incumbents],
+            "rejected_config_ids": self._rejected_config_ids,
+            "incumbents_changed": self._incumbents_changed,
+            "trajectory": [dataclasses.asdict(item) for item in self._trajectory],
+            "state": self.get_state(),
+        }
+
+        return data
+
     def save(self, filename: str | Path) -> None:
         """Saves the current state of the intensifier. In addition to the state (retrieved by ``get_state``), this
         method also saves the incumbents and trajectory.
@@ -694,13 +719,7 @@ class AbstractIntensifier:
         assert str(filename).endswith(".json")
         filename.parent.mkdir(parents=True, exist_ok=True)
 
-        data = {
-            "incumbent_ids": [self.runhistory.get_config_id(config) for config in self.incumbents],
-            "rejected_config_ids": self._rejected_config_ids,
-            "incumbents_changed": self._incumbents_changed,
-            "trajectory": [dataclasses.asdict(item) for item in self._trajectory],
-            "state": self.get_state(),
-        }
+        data = self.get_save_data()
 
         with open(filename, "w") as fp:
             json.dump(data, fp, indent=2)

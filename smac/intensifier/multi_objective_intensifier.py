@@ -61,6 +61,27 @@ class MOIntensifierMixin(object):
         # TODO adjust
         raise NotImplementedError
 
+    def _cut_incumbents(self, incumbent_ids: list[int], all_incumbent_isb_keys: list[list[InstanceSeedBudgetKey]]) -> list[int]:
+        #TODO JG sort by hypervolume
+        new_incumbents = sort_by_crowding_distance(self.runhistory, incumbent_ids, all_incumbent_isb_keys)
+        new_incumbents = new_incumbents[: self._max_incumbents]
+
+        logger.info(
+            f"Removed one incumbent using their reduction in hypervolume because more than {self._max_incumbents} are "
+            "available."
+        )
+
+        return new_incumbents
+
+    def get_instance_seed_budget_keys(
+        self, config: Configuration, compare: bool = False
+    ) -> list[InstanceSeedBudgetKey]:
+        """Returns the instance-seed-budget keys for a given configuration. This method is *used for
+        updating the incumbents* and might differ for different intensifiers. For example, if incumbents should only
+        be compared on the highest observed budgets.
+        """
+        return self.runhistory.get_instance_seed_budget_keys(config, highest_observed_budget_only=True)
+
 class MOIntensifier(Intensifier, MOIntensifierMixin):
     pass
 
