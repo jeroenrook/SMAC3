@@ -40,7 +40,7 @@ class TargetFunctionScriptRunner(AbstractSerialRunner):
 
     Parameters
     ----------
-    target_function : Callable
+    target_function : str
         The target function.
     scenario : Scenario
     required_arguments : list[str]
@@ -199,7 +199,7 @@ class TargetFunctionScriptRunner(AbstractSerialRunner):
         algorithm_kwargs: dict[str, Any],
     ) -> tuple[str, str]:
         """Calls the algorithm, which is processed in the ``run`` method."""
-        cmd = [self._target_function]
+        cmd = self._target_function.split(" ")
         for k, v in algorithm_kwargs.items():
             v = str(v)
             k = str(k)
