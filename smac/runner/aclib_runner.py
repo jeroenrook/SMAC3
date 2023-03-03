@@ -3,12 +3,13 @@ from __future__ import annotations
 __copyright__ = "Copyright 2022, automl.org"
 __license__ = "3-clause BSD"
 
-
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Iterator
 
 import time
 import traceback
+from subprocess import Popen, PIPE
 
 import numpy as np
 from ConfigSpace import Configuration
@@ -61,12 +62,23 @@ class ACLibRunner(TargetFunctionScriptRunner):
         cmd += config
 
         logger.debug(f"Calling: {' '.join(cmd)}")
-        print(f"Calling: {' '.join(cmd)}")
         p = Popen(cmd, shell=False, stdout=PIPE, stderr=PIPE, universal_newlines=True)
         output, error = p.communicate()
 
         logger.debug("Stdout: %s" % output)
         logger.debug("Stderr: %s" % error)
 
-        return output, error
+        result_begin = "Result for SMAC3v2: "
+        outputline = ""
+        for line in output.split("\n"):
+            line = line.strip()
+            if re.match(result_begin, line):
+                print("match")
+                outputline = line[len(result_begin):]
+
+        logger.debug(f"Found result in output: {outputline}")
+
+        #Parse output to form of key=value;key2=value2;...;cost=value1,value2;...
+
+        return outputline, error
 
