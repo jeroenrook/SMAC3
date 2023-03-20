@@ -721,9 +721,16 @@ class AbstractIntensifier:
         pass
 
     def get_save_data(self) -> dict:
+        incumbent_ids = []
+        for config in self.incumbents:
+            try:
+                incumbent_ids.append(self.runhistory.get_config_id(config))
+            except KeyError:
+                incumbent_ids.append(-1) #Should not happen, but occurs sometimes with small-budget runs
+                logger.warning(f"{config} does not exist in runhistory, but is part of the incumbent!")
+
         data = {
-            "incumbent_ids": [self.runhistory.get_config_id(config) for config in
-                              self.incumbents],
+            "incumbent_ids": incumbent_ids,
             "rejected_config_ids": self._rejected_config_ids,
             "incumbents_changed": self._incumbents_changed,
             "trajectory": [dataclasses.asdict(item) for item in self._trajectory],
