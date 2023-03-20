@@ -488,13 +488,10 @@ class LocalSearch(AbstractAcquisitionMaximizer):
                     )
 
         logger.debug(
-            "Local searches took %s steps and looked at %s configurations. Computing the acquisition function for "
-            "each search took %f (prev %f) seconds on average and each acquisition function call took %f seconds on average.",
-            local_search_steps,
-            neighbors_looked_at,
-            np.sum(times_per_iteration)/num_candidates,
-            np.mean(times_per_iteration),
-            times_per_iteration/np.sum(neighbors_looked_at),
+            f"Local searches took {local_search_steps} steps and looked at {neighbors_looked_at} configurations." 
+            f"Computing the acquisition function for each search took {np.sum(times_per_iteration)/num_candidates}" 
+            f"(prev {np.mean(times_per_iteration)}) seconds on average and each acquisition function call took {times_per_iteration/np.sum(neighbors_looked_at)} seconds on average."
+            f"In total the whole procedure took {np.sum(times_per_iteration)} seconds to look at {np.sum(neighbors_looked_at)} configurations."
         )
 
         return [(a, i) for a, i in zip(acq_val_candidates, candidates)]
