@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Iterator
 
 import copy
@@ -50,7 +51,8 @@ class ConfigSelector:
         self,
         scenario: Scenario,
         *,
-        retrain_after: int = 8,
+        retrain_after: int | None = 8,
+        retrain_wallclock_ratio: float | None = None,
         retries: int = 16,
         min_trials: int = 1,
     ) -> None:
@@ -70,6 +72,7 @@ class ConfigSelector:
 
         # And other variables
         self._retrain_after = retrain_after
+        self._retrain_wallclock_ratio = retrain_wallclock_ratio
         self._previous_entries = -1
         self._predict_x_best = True
         self._min_trials = min_trials
@@ -78,9 +81,17 @@ class ConfigSelector:
         # How often to retry receiving a new configuration
         # (counter increases if the received config was already returned before)
         self._retries = retries
+        self._counter = 0
+
+        self._wallclock_start_time: float = time.time()
+        self._acquisition_training_times: list[float] = []
 
         # Processed configurations should be stored here; this is important to not return the same configuration twice
         self._processed_configs: list[Configuration] = []
+
+        #Check if there is at least one retrain condition
+        if self._retrain_after is None and self._retrain_wallclock_ratio is None:
+            raise ValueError("No retrain condition specified!")
 
     def _set_components(
         self,
@@ -186,6 +197,7 @@ class ConfigSelector:
                 continue
 
             # Check if X/Y differs from the last run, otherwise use cached results
+            start_time = time.time()
             if self._previous_entries != Y.shape[0]:
                 self._model.train(X, Y)
 
@@ -218,22 +230,21 @@ class ConfigSelector:
                 random_design=self._random_design,
             )
 
-            counter = 0
+            self._acquisition_training_times.append(time.time() - start_time)
+
+            self._counter = 0
             failed_counter = 0
             for config in challengers:
                 if config not in self._processed_configs:
-                    counter += 1
+                    self._counter += 1
                     self._processed_configs.append(config)
                     self._call_callbacks_on_end(config)
                     yield config
-                    retrain = counter == self._retrain_after
+                    retrain = self._check_for_retrain()
                     self._call_callbacks_on_start()
 
                     # We break to enforce a new iteration of the while loop (i.e. we retrain the surrogate model)
                     if retrain:
-                        logger.debug(
-                            f"Yielded {counter} configurations. Start new iteration and retrain surrogate model."
-                        )
                         break
                 else:
                     failed_counter += 1
@@ -242,6 +253,32 @@ class ConfigSelector:
                     if failed_counter == self._retries:
                         logger.warning(f"Could not return a new configuration after {self._retries} retries." "")
                         return
+
+    def _check_for_retrain(self) -> bool:
+        if self._retrain_after is not None:
+            if self._counter >= self._retrain_after:
+                logger.debug(
+                    f"Yielded {self._counter} configurations. Start new iteration and retrain surrogate model."
+                )
+                return True
+
+        if self._retrain_wallclock_ratio is not None:
+            # Total elapsed wallcock time
+            elapsed_time = time.time() - self._wallclock_start_time
+
+            # Total time spend on getting configurations with the surrogate model
+            acquisition_training_time = sum(self._acquisition_training_times)
+
+            # Retrain when more time has been spend
+            if elapsed_time * self._retrain_wallclock_ratio > acquisition_training_time:
+                logger.debug(
+                    f"Less than {self._retrain_wallclock_ratio:.2%} ({acquisition_training_time / elapsed_time:.2f}) "
+                    f"of the elapsed wallclock time ({elapsed_time:.2f}s) has been spend on finding new configurations "
+                    f"with the surrogate model. Start new iteration and retrain surrogate model."
+                )
+                return True
+
+        return False
 
     def _call_callbacks_on_start(self) -> None:
         for callback in self._callbacks:
