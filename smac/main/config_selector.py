@@ -244,8 +244,6 @@ class ConfigSelector:
             if self._retrain_wallclock_ratio is not None:
                 len(challengers)  # TODO hacky: Forces actual computation of the acquisition function maximizer
 
-            time.sleep(15)
-
             self._acquisition_training_times.append(time.time() - start_time)
 
 
