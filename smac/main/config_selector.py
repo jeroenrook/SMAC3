@@ -36,8 +36,13 @@ class ConfigSelector:
 
     Parameters
     ----------
-    retrain_after : int, defaults to 8
+     retrain_after : int | None, defaults to 8
         How many configurations should be returned before the surrogate model is retrained.
+    retrain_wallclock_ratio: float | None, default to None
+        How much time of the total elapsed wallclock time should be spend on retraining the surrogate model
+        and the acquisition function look. Example ratio of 0.1 would result in that only 10% of the wallclock time is spend on retraining.
+    min_configurations: int, defaults to 2
+        The minimum number of configurations that need to yield before retraining can occur. Should be lower or equal to retrain_after.
     retries : int, defaults to 8
         How often to retry receiving a new configuration before giving up.
     min_trials: int, defaults to 1
@@ -53,6 +58,7 @@ class ConfigSelector:
         *,
         retrain_after: int | None = 8,
         retrain_wallclock_ratio: float | None = None,
+        min_configurations: int = 2,
         retries: int = 16,
         min_trials: int = 1,
     ) -> None:
@@ -73,6 +79,7 @@ class ConfigSelector:
         # And other variables
         self._retrain_after = retrain_after
         self._retrain_wallclock_ratio = retrain_wallclock_ratio
+        self._min_configurations = min_configurations
         self._previous_entries = -1
         self._predict_x_best = True
         self._min_trials = min_trials
@@ -92,6 +99,10 @@ class ConfigSelector:
         #Check if there is at least one retrain condition
         if self._retrain_after is None and self._retrain_wallclock_ratio is None:
             raise ValueError("No retrain condition specified!")
+
+        if self._retrain_after is not None:
+            if self._retrain_after < self._min_configurations:
+                raise ValueError("retrain_after should be higher or equal to min_configurations")
 
     def _set_components(
         self,
@@ -230,9 +241,14 @@ class ConfigSelector:
                 random_design=self._random_design,
             )
 
+            if self._retrain_wallclock_ratio is not None:
+                len(challengers)  # TODO hacky: Forces actual computation of the acquisition function maximizer
+
+            time.sleep(15)
+
             self._acquisition_training_times.append(time.time() - start_time)
 
-            self._counter = 0
+
             failed_counter = 0
             for config in challengers:
                 if config not in self._processed_configs:
@@ -263,6 +279,9 @@ class ConfigSelector:
                 return True
 
         if self._retrain_wallclock_ratio is not None:
+            if self._counter < self._min_configurations:
+                return False
+
             # Total elapsed wallcock time
             elapsed_time = time.time() - self._wallclock_start_time
 
@@ -270,7 +289,7 @@ class ConfigSelector:
             acquisition_training_time = sum(self._acquisition_training_times)
 
             # Retrain when more time has been spend
-            if elapsed_time * self._retrain_wallclock_ratio > acquisition_training_time:
+            if acquisition_training_time / elapsed_time < self._retrain_wallclock_ratio:
                 logger.debug(
                     f"Less than {self._retrain_wallclock_ratio:.2%} ({acquisition_training_time / elapsed_time:.2f}) "
                     f"of the elapsed wallclock time ({elapsed_time:.2f}s) has been spend on finding new configurations "
