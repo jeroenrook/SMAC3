@@ -139,7 +139,7 @@ class Intensifier(AbstractIntensifier):
             # Also, incorporate ``get_incumbent_instance_seed_budget_keys`` here because challengers are only allowed to
             # sample from the incumbent's instances
             incumbents = self.get_incumbents(sort_by="num_trials")
-            incumbent_isb_keys = self.get_incumbent_instance_seed_budget_keys()
+            incumbent_isb_keys = self.get_incumbent_instance_seed_budget_keys() # Intersection
 
             # Check if configs in queue are still running
             all_configs_running = True
@@ -148,7 +148,7 @@ class Intensifier(AbstractIntensifier):
                     all_configs_running = False
                     break
 
-            if len(self._queue) == 0 or all_configs_running:
+            if len(self._queue) == 0 or all_configs_running: # Incumbents
                 if len(self._queue) == 0:
                     logger.debug("Queue is empty:")
                 else:
@@ -208,6 +208,7 @@ class Intensifier(AbstractIntensifier):
                         logger.debug(f"--- Finished yielding for config {incumbent_hash}.")
 
                         # We break here because we only want to intensify one more trial of one incumbent
+                        # TODO intensify until the incumbents are all of equal size (N+1 of biggest incumbent)
                         break
                     else:
                         # assert len(incumbent_isb_keys) == self._max_config_calls
@@ -252,45 +253,85 @@ class Intensifier(AbstractIntensifier):
                         self._queue.remove((config, N))
                         continue
 
+                    logger.debug(f"--- Config {config_hash} origin ({config.origin})")
+
                     # And then we yield as many trials as we specified N
                     # However, only the same instances as the incumbents are used
                     isk_keys: list[InstanceSeedBudgetKey] | None = None
                     if len(incumbent_isb_keys) > 0:
                         isk_keys = incumbent_isb_keys
 
-                    # TODO: What to do if there are no incumbent instances? (Use-case: call multiple asks)
 
                     trials = self._get_next_trials(config, N=N, from_keys=isk_keys)
-                    logger.debug(f"--- Yielding {len(trials)} trials to evaluate config {config_hash}...")
-                    for trial in trials:
-                        fails = -1
-                        yield trial
-
-                    logger.debug(f"--- Finished yielding for config {config_hash}.")
-
-                    # Now we have to remove the config
-                    self._queue.remove((config, N))
-                    logger.debug(f"--- Removed config {config_hash} with N={N} from queue.")
-
-                    # Finally, we add the same config to the queue with a higher N
-                    # If the config was rejected by the runhistory, then it's been removed in the next iteration
-                    if N < self._max_config_calls:
-                        new_pair = (config, N * 2)
-                        if new_pair not in self._queue:
-                            logger.debug(
-                                f"--- Doubled trials of config {config_hash} to N={N*2} and added it to the queue "
-                                "again."
-                            )
-                            self._queue.append((config, N * 2))
-
-                            # Also reset fails here
+                    if len(trials) == 0:
+                        # We remove the config and do not add it back to the queue.
+                        self._queue.remove((config, N))
+                        logger.debug(f"--- No trails to evaluate for config {config_hash}. "
+                                     f"Removed config {config_hash} with N={N} from queue.")
+                    else:
+                        logger.debug(f"--- Yielding {len(trials)} trials to evaluate config {config_hash}...")
+                        for trial in trials:
                             fails = -1
-                        else:
-                            logger.debug(f"--- Config {config_hash} with N={N*2} is already in the queue.")
+                            yield trial
+
+                        logger.debug(f"--- Finished yielding for config {config_hash}.")
+
+                        # Now we have to remove the config
+                        self._queue.remove((config, N))
+                        logger.debug(f"--- Removed config {config_hash} with N={N} from queue.")
+
+                        # Finally, we add the same config to the queue with a higher N
+                        # If the config was rejected by the runhistory, then it's been removed in the next iteration
+                        if N < self._max_config_calls:
+                            new_pair = (config, N * 2)
+                            if new_pair not in self._queue:
+                                logger.debug(
+                                    f"--- Doubled trials of config {config_hash} to N={N*2} and added it to the queue "
+                                    "again."
+                                )
+                                self._queue.append((config, N * 2))
+
+                                # Also reset fails here
+                                fails = -1
+                            else:
+                                logger.debug(f"--- Config {config_hash} with N={N*2} is already in the queue.")
 
                     # If we are at this point, it really is important to break because otherwise, we would intensify
                     # all configs in the queue in one iteration
                     break
+
+    def _check_for_intermediate_comparison(self, config: Configuration) -> bool:
+        """
+
+        Parameters
+        ----------
+        config: Configuration
+
+        Returns
+        -------
+        A boolean which decides if the current configuration should be compared against the incumbent.
+        """
+
+        config_isb_keys = self.get_instance_seed_budget_keys(config)
+        config_id = self.runhistory.get_config_id(config)
+        config_hash = get_config_hash(config)
+
+        # Do not compare very early in the process
+        if len(config_isb_keys) < 4:
+            return False
+
+        # Find N in _queue
+        N = None
+        for c, cn in self._queue:
+            if config == c:
+                N = cn
+                break
+
+        if N is None:
+            logger.debug(f"This should not happen, but config {config_hash} is not in the queue.")
+            return False
+
+        return len(config_isb_keys) == N
 
     def _get_next_trials(
         self,
