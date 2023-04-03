@@ -148,7 +148,7 @@ class ConfigSelector:
         Note
         ----
         When SMAC continues a run, processed configurations from the runhistory are ignored. For example, if the
-        intitial design configurations already have been processed, they are ignored here. After the run is
+        initial design configurations already have been processed, they are ignored here. After the run is
         continued, however, the surrogate model is trained based on the runhistory in all cases.
 
         Returns
@@ -259,6 +259,7 @@ class ConfigSelector:
 
                     # We break to enforce a new iteration of the while loop (i.e. we retrain the surrogate model)
                     if retrain:
+                        self._counter = 0
                         break
                 else:
                     failed_counter += 1
