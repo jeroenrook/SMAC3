@@ -428,12 +428,16 @@ class AbstractIntensifier:
             if len(incumbent_isb_keys) <= 1:
                 return []
 
-            incumbent_isb_keys = list(set.difference(*map(set, incumbent_isb_keys)))  # type: ignore
+            # union - intersection
+            intersection_isb_keys = set.intersection(*map(set, incumbent_isb_keys))
+            union_isb_keys = set.union(*map(set, incumbent_isb_keys))
+            incumbent_isb_keys_differences = list(union_isb_keys - intersection_isb_keys)
+            # incumbent_isb_keys = list(set.difference(*map(set, incumbent_isb_keys)))  # type: ignore
 
-            if len(incumbent_isb_keys) == 0:
+            if len(incumbent_isb_keys_differences) == 0:
                 return []
 
-            return incumbent_isb_keys  # type: ignore
+            return incumbent_isb_keys_differences  # type: ignore
 
         return []
 
@@ -624,7 +628,7 @@ class AbstractIntensifier:
         all_incumbent_isb_keys = []
         for incumbent in incumbents:
             # all_incumbent_isb_keys.append(self.get_instance_seed_budget_keys(incumbent))
-            all_incumbent_isb_keys.append(self.get_incumbent_instance_seed_budget_keys())  # !!!!!
+            all_incumbent_isb_keys.append(self.get_incumbent_instance_seed_budget_keys()) # !!!!!
 
         #TODO JG it is guaruanteed that the challenger has ran on the intersection of isb_keys
         # of the incumbents, however this is not the case in this part of the code.
