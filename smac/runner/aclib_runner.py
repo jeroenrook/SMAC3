@@ -73,7 +73,7 @@ class ACLibRunner(TargetFunctionScriptRunner):
         for line in output.split("\n"):
             line = line.strip()
             if re.match(result_begin, line):
-                print("match")
+                # print("match")
                 outputline = line[len(result_begin):]
 
         logger.debug(f"Found result in output: {outputline}")
