@@ -584,15 +584,21 @@ class AbstractIntensifier:
                 if config in incumbents:
                     return
 
-                incumbents.append(config)
+                # IDEA only compare domination between one incumbent (as relaxation measure)
+                iid = self._rng.choice(len(incumbents))
+                incumbents = [incumbents[iid], config]
+                # incumbents.append(config)
+
                 # Only the trials of the challenger
                 all_incumbent_isb_keys = [config_isb_comparison_keys for _ in incumbents]
-                #TODO IDEA only compare domination between one incumbent (as relaxation measure)
+
                 new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
 
                 if config not in new_incumbents:
                     #Reject config
-                    logger.debug(f"Rejected config {config_hash} in an intermediate comparison because it is dominated by the incumbents on {len(config_isb_keys)} trials.")
+                    logger.debug(f"Rejected config {config_hash} in an intermediate comparison because it "
+                                 f"is dominated by a randomly sampled config from the incumbents on "
+                                 f"{len(config_isb_keys)} trials.")
                     self._add_rejected_config(config)
 
                 return
