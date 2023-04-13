@@ -603,6 +603,9 @@ class RunHistory(Mapping[TrialKey, TrialValue]):
 
     def get_config_id(self, config: Configuration) -> int:
         """Returns the configuration id from a configuration."""
+        if config not in self._config_ids:
+            logger.warning("Requested id of unknown configuration!")
+            return -1
         return self._config_ids[config]
 
     def get_configs(self, sort_by: str | None = None) -> list[Configuration]:
