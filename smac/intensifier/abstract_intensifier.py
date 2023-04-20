@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from abc import abstractmethod
 from typing import Any, Callable, Iterator
 
@@ -465,7 +466,8 @@ class AbstractIntensifier:
         return RunHistoryCallback(self)
 
     def _check_for_intermediate_comparison(self, config: Configuration) -> bool:
-        """
+        """Checks if the configuration should be evaluated against the incumbent while it
+        did not run on all the trails the incumbents did.
 
         Parameters
         ----------
@@ -478,64 +480,95 @@ class AbstractIntensifier:
 
         return False
 
-    def update_incumbents(self, config: Configuration) -> None:
-        """Updates the incumbents. This method is called everytime a trial is added to the runhistory. Since only
-        the affected config and the current incumbents are used, this method is very efficient. Furthermore, a
-        configuration is only considered incumbent if it has a better performance on all incumbent instances.
+    def _intermediate_comparison(self, config: Configuration) -> bool:
+        """Compares the configuration against the incumbent
 
-        Crucially, if there is no incumbent (at the start) then, the first configuration assumes
-        incumbent status. For the next configuration, we need to check if the configuration
-        is better on all instances that have been evaluated for the incumbent. If this is the
-        case, then we can replace the incumbent. Otherwise, a) we need to requeue the config to
-        obtain the missing instance-seed-budget combination or b) mark this configuration as
-        inferior ("rejected") to not consider it again. The comparison behaviour is controlled by
-        self.get_instance_seed_budget_keys() and self.get_incumbent_instance_seed_budget_keys().
+        Parameters
+        ----------
+        config: Configuration
 
-        Notably, this method is written to support both multi-fidelity and multi-objective
-        optimization. While the get_instance_seed_budget_keys() method and
-        self.get_incumbent_instance_seed_budget_keys() are used for the multi-fidelity behaviour,
-        calculate_pareto_front() is used as a hard coded way to support multi-objective
-        optimization, including the single objective as special case. calculate_pareto_front()
-        is called on the set of all (in case of MO) incumbents amended with the challenger
-        configuration, provided it has a sufficient overlap in seed-instance-budget combinations.
+        Returns
+        -------
+        A boolean which indicates if we should continue with this configuration.
+        """
+        config_hash = get_config_hash(config)
+        incumbents = self.get_incumbents()
+        config_isb_keys = self.get_instance_seed_budget_keys(config, compare=True)
+        incumbent_isb_comparison_keys = self.get_incumbent_instance_seed_budget_keys(compare=True)
 
-        Lastly, if we have a self._max_incumbents and the pareto front provides more than this
-        specified amount, we cut the incumbents using crowding distance.
+
+        logger.debug(
+            f"Perform intermediate comparions of config {config_hash} with incumbents to see if it is worse"
+        )
+        # TODO perform comparison with incumbent on current instances.
+        # Check if the config with these number of trials is part of the Pareto front
+
+        # Check if the incumbents ran on all the ones of this config
+        if not all([key in incumbent_isb_comparison_keys for key in config_isb_keys]):
+            logger.debug("Config ran on other isb_keys than the incumbents. Should not happen.")
+            return True
+
+        # Ensure that the config is not part of the incumbent
+        if config in incumbents:
+            return True
+
+        # Only compare domination between one incumbent (as relaxation measure)
+        iid = self._rng.choice(len(incumbents))
+        incumbents = [incumbents[iid], config]
+        # incumbents.append(config)
+
+        # Only the trials of the challenger
+        all_incumbent_isb_keys = [config_isb_keys for _ in incumbents]
+
+        new_incumbents = self._calculate_pareto_front(self.runhistory, incumbents, all_incumbent_isb_keys)
+
+        return config in new_incumbents
+
+    def _update_incumbent(self, config: Configuration) -> list[Configuration]:
+        """Updates the incumbent with the config (which can be the challenger)
+
+        Parameters
+        ----------
+        config: Configuration
+
+        Returns
+        -------
         """
         rh = self.runhistory
 
-        # What happens if a config was rejected, but it appears again? Give it another try even if it
-        # has already been evaluated? Yes!
+        incumbents = self.get_incumbents()
 
-        #TODO what to do when config is part of the incumbent?
+        if config not in incumbents:
+            incumbents.append(config)
 
-        # Associated trials and id
-        config_isb_keys = self.get_instance_seed_budget_keys(config)
-        config_id = rh.get_config_id(config)
+        isb_keys = self.get_incumbent_instance_seed_budget_keys(compare=True)
+        all_incumbent_isb_keys = [isb_keys for _ in range(len(incumbents))]
+
+
+        # We compare the incumbents now and only return the ones on the Pareto front
+        # _calculate_pareto_front returns only non-dominated points
+        new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
+        return new_incumbents
+
+    def update_incumbents(self, config: Configuration) -> None:
+        incumbents = self.get_incumbents()
         config_hash = get_config_hash(config)
 
-        # We skip updating incumbents if no instances are available
+        config_isb_keys = self.get_instance_seed_budget_keys(config, compare=True)
+        incumbent_isb_keys = self.get_incumbent_instance_seed_budget_keys(compare=True)
+
+        #Check if config holds keys
         # Note: This is especially the case if trials of a config are still running
         # because if trials are running, the runhistory does not update the trials in the fast data structure
         if len(config_isb_keys) == 0:
             logger.debug(f"No relevant instances evaluated for config {config_hash}. Updating incumbents is skipped.")
             return
 
-        # Now we get the incumbents and see which trials have been used
-        incumbents = self.get_incumbents()
-        incumbent_ids = [rh.get_config_id(c) for c in incumbents]
-        # Find the lowest intersection of instance-seed-budget keys for all incumbents.
-        incumbent_isb_keys = self.get_incumbent_instance_seed_budget_keys()
-
-        # Save for later
-        previous_incumbents = incumbents.copy()
-        previous_incumbent_ids = incumbent_ids.copy()
-
-        # Little sanity check here for consistency
         if len(incumbents) > 0:
             assert incumbent_isb_keys is not None
             assert len(incumbent_isb_keys) > 0
 
+        # Check if incumbent exists
         # If there are no incumbents at all, we just use the new config as new incumbent
         # Problem: We can add running incumbents
         if len(incumbents) == 0:  # incumbent_isb_keys is None and len(incumbents) == 0:
@@ -545,123 +578,51 @@ class AbstractIntensifier:
             # Nothing else to do
             return
 
-        # Comparison keys
-        # This one is a bit tricky: We would have problems if we compare with budgets because we might have different
-        # scenarios (depending on the incumbent selection specified in Successive Halving).
-        # 1) Any budget/highest observed budget: We want to get rid of the budgets because if we know it is calculated
-        # on the same instance-seed already then we are ready to go. Imagine we would check for the same budgets,
-        # then the configs can not be compared although the user does not care on which budgets configurations have
-        # been evaluated.
-        # 2) Highest budget: We only want to compare the configs if they are evaluated on the highest budget.
-        # Here we do actually care about the budgets. Please see the ``get_instance_seed_budget_keys`` method from
-        # Successive Halving to get more information.
-        # Noitce: compare=True only takes effect when subclass implemented it. -- e.g. in SH it
-        # will remove the budgets from the keys.
-        config_isb_comparison_keys = self.get_instance_seed_budget_keys(config, compare=True)
-        # Find the lowest intersection of instance-seed-budget keys for all incumbents.
-        config_incumbent_isb_comparison_keys = self.get_incumbent_instance_seed_budget_keys(compare=True)  # Intersection
+        #Check if config isb is subset of incumbents
+        # if not all([isb_key in incumbent_isb_keys for isb_key in config_isb_keys]):
+        #     # If the config is part of the incumbents this could happen
+        #     logger.info(f"Config {config_hash} did run on more instances than the incumbent. Cannot make a proper comparison.")
+        #     return
 
-        # Now we have to check if the new config has been evaluated on the same keys as the incumbents
-        # TODO If the config is part of the incumbent then it should always be a subset of the intersection
-        if not all([key in config_isb_comparison_keys for key in config_incumbent_isb_comparison_keys]):
-            # We can not tell if the new config is better/worse than the incumbents because it has not been
-            # evaluated on the necessary trials
-
-            # TODO JG add procedure to check if intermediate comparison
+        # Config did not run on all isb keys of incumbent
+        # Now we have to check if we should continue with this configuration
+        if not set(config_isb_keys) == set(incumbent_isb_keys):
+            # Config did not run on all trials
             if self._check_for_intermediate_comparison(config):
-                logger.debug(
-                    f"Perform intermediate comparions of config {config_hash} with incumbents to see if it is worse"
-                )
-                #TODO perform comparison with incumbent on current instances.
-                # Check if the config with these number of trials is part of the Pareto front
-
-                #Check if the incumbents ran on all the ones of this config
-                if not all([key in config_incumbent_isb_comparison_keys for key in config_isb_keys]):
-                    logger.debug("Config ran on other isb_keys than the incumbents. Should not happen.")
-                    return
-
-                #Ensure that the config is not part of the incumbent
-                if config in incumbents:
-                    return
-
-                # IDEA only compare domination between one incumbent (as relaxation measure)
-                iid = self._rng.choice(len(incumbents))
-                incumbents = [incumbents[iid], config]
-                # incumbents.append(config)
-
-                # Only the trials of the challenger
-                all_incumbent_isb_keys = [config_isb_comparison_keys for _ in incumbents]
-
-                new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
-
-                if config not in new_incumbents:
-                    #Reject config
-                    logger.debug(f"Rejected config {config_hash} in an intermediate comparison because it "
-                                 f"is dominated by a randomly sampled config from the incumbents on "
-                                 f"{len(config_isb_keys)} trials.")
+                if not self._intermediate_comparison(config):
+                    logger.debug(f"Rejected config {config_hash} in an intermediate comparison on {len(config_isb_keys)} trials.")
                     self._add_rejected_config(config)
+            return
 
-                return
+        # Config did run on all isb keys of incumbent
+        # Here we really update the incumbent by:
+        # 1. Removing incumbents that are now dominated by another configuration in the incumbent
+        # 2. Add in the challenger to the incumbent
+        rh = self.runhistory
 
-            else:
-                #TODO
-
-                logger.debug(
-                    f"Could not compare config {config_hash} with incumbents because it's evaluated on "
-                    f"different trials."
-                )
-
-                # The config has to go to a queue now as it is a challenger and a potential incumbent
-                return
-        else:
-            # If all instances are available and the config is incumbent and even evaluated on more trials
-            # then there's nothing we can do
-            # TODO JG: Will always be false, because the incumbent with the smallest number of trials has been ran.
-            # TODO JG: Hence: len(config_isb_keys) == len(incumbent_isb_keys)
-            if config in incumbents and len(config_isb_keys) > len(incumbent_isb_keys):
-                logger.debug(
-                    "Config is already an incumbent but can not be compared to other incumbents because "
-                    "the others are missing trials."
-                )
-                return
-
-        # Add config to incumbents so that we compare only the new config and existing incumbents
-        if config not in incumbents:
-            incumbents.append(config)
-            incumbent_ids.append(config_id)
-
-        # Now we get all instance-seed-budget keys for each incumbent (they might be different when using budgets)
-        all_incumbent_isb_keys = []
-        for incumbent in incumbents:
-            # all_incumbent_isb_keys.append(self.get_instance_seed_budget_keys(incumbent))
-            all_incumbent_isb_keys.append(self.get_incumbent_instance_seed_budget_keys()) # !!!!!
-
-        #TODO JG it is guaruanteed that the challenger has ran on the intersection of isb_keys
-        # of the incumbents, however this is not the case in this part of the code.
-        # Here, all the runs of each incumbent used. Maybe the intensifier ensures that the incumbents
-        # have ran on the same isb keys in the first place?
-        # FIXED IN LINE 580
-
-        #TODO JG get intersection for all incumbent_isb_keys and check if it breaks budget.
-
-        # We compare the incumbents now and only return the ones on the Pareto front
-        new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
+        previous_incumbents = copy.copy(incumbents)
+        previous_incumbent_ids = [rh.get_config_id(c) for c in previous_incumbents]
+        new_incumbents = self._update_incumbent(config)
         new_incumbent_ids = [rh.get_config_id(c) for c in new_incumbents]
 
-        if len(previous_incumbents) == len(new_incumbents):
-            if previous_incumbents == new_incumbents:
-                # No changes in the incumbents
-                self._remove_rejected_config(config_id)
-                return
-            else:
-                # In this case, we have to determine which config replaced which incumbent and reject it
-                # We will remove the oldest configuration (the one with the lowest id) because
-                # set orders the ids ascending.
-                self._remove_incumbent(config=config, previous_incumbent_ids=previous_incumbent_ids, new_incumbent_ids=new_incumbent_ids)
-
+        # Update trajectory
+        if previous_incumbents == new_incumbents:
+            # No changes in the incumbents -> Challenger is rejected, incumbent remains
+            # if config not in new_incumbents:
+            #     self._add_rejected_config(config)  # TODO JG: Here the config was initially removed from the rejected list...
+            # else:
+            self._remove_rejected_config(config)
+            return
+        elif len(previous_incumbents) == len(new_incumbents):
+            # In this case, we have to determine which config replaced which incumbent and reject it
+            # We will remove the oldest configuration (the one with the lowest id) because
+            # set orders the ids ascending.
+            self._remove_incumbent(config=config,
+                                   previous_incumbent_ids=previous_incumbent_ids,
+                                   new_incumbent_ids=new_incumbent_ids)
         elif len(previous_incumbents) < len(new_incumbents):
             # Config becomes a new incumbent; nothing is rejected in this case
-            self._remove_rejected_config(config_id)
+            self._remove_rejected_config(config)
             logger.info(
                 f"Config {config_hash} is a new incumbent. " f"Total number of incumbents: {len(new_incumbents)}."
             )
@@ -679,10 +640,195 @@ class AbstractIntensifier:
         # Cut incumbents: We only want to keep a specific number of incumbents
         # We use the crowding distance for that
         if len(new_incumbents) > self._max_incumbents:
+            all_incumbent_isb_keys = [incumbent_isb_keys for i in range(len(new_incumbents))]
             new_incumbents = self._cut_incumbents(new_incumbents, all_incumbent_isb_keys)
             #TODO JG adjust. Other option: statistical test or HV (SMS-EMOA reduce function)
 
         self._update_trajectory(new_incumbents)
+
+
+    # def update_incumbents(self, config: Configuration) -> None:
+    #     """Updates the incumbents. This method is called everytime a trial is added to the runhistory. Since only
+    #     the affected config and the current incumbents are used, this method is very efficient. Furthermore, a
+    #     configuration is only considered incumbent if it has a better performance on all incumbent instances.
+    #
+    #     Crucially, if there is no incumbent (at the start) then, the first configuration assumes
+    #     incumbent status. For the next configuration, we need to check if the configuration
+    #     is better on all instances that have been evaluated for the incumbent. If this is the
+    #     case, then we can replace the incumbent. Otherwise, a) we need to requeue the config to
+    #     obtain the missing instance-seed-budget combination or b) mark this configuration as
+    #     inferior ("rejected") to not consider it again. The comparison behaviour is controlled by
+    #     self.get_instance_seed_budget_keys() and self.get_incumbent_instance_seed_budget_keys().
+    #
+    #     Notably, this method is written to support both multi-fidelity and multi-objective
+    #     optimization. While the get_instance_seed_budget_keys() method and
+    #     self.get_incumbent_instance_seed_budget_keys() are used for the multi-fidelity behaviour,
+    #     calculate_pareto_front() is used as a hard coded way to support multi-objective
+    #     optimization, including the single objective as special case. calculate_pareto_front()
+    #     is called on the set of all (in case of MO) incumbents amended with the challenger
+    #     configuration, provided it has a sufficient overlap in seed-instance-budget combinations.
+    #
+    #     Lastly, if we have a self._max_incumbents and the pareto front provides more than this
+    #     specified amount, we cut the incumbents using crowding distance.
+    #     """
+    #     rh = self.runhistory
+    #
+    #     # What happens if a config was rejected, but it appears again? Give it another try even if it
+    #     # has already been evaluated? Yes!
+    #
+    #     #TODO what to do when config is part of the incumbent?
+    #
+    #     # Associated trials and id
+    #     config_isb_keys = self.get_instance_seed_budget_keys(config)
+    #     config_id = rh.get_config_id(config)
+    #     config_hash = get_config_hash(config)
+    #
+    #     # We skip updating incumbents if no instances are available
+    #     # Note: This is especially the case if trials of a config are still running
+    #     # because if trials are running, the runhistory does not update the trials in the fast data structure
+    #     if len(config_isb_keys) == 0:
+    #         logger.debug(f"No relevant instances evaluated for config {config_hash}. Updating incumbents is skipped.")
+    #         return
+    #
+    #     # Now we get the incumbents and see which trials have been used
+    #     incumbents = self.get_incumbents()
+    #     incumbent_ids = [rh.get_config_id(c) for c in incumbents]
+    #     # Find the lowest intersection of instance-seed-budget keys for all incumbents.
+    #     incumbent_isb_keys = self.get_incumbent_instance_seed_budget_keys()
+    #
+    #     # Save for later
+    #     previous_incumbents = incumbents.copy()
+    #     previous_incumbent_ids = incumbent_ids.copy()
+    #
+    #     # Little sanity check here for consistency
+    #     if len(incumbents) > 0:
+    #         assert incumbent_isb_keys is not None
+    #         assert len(incumbent_isb_keys) > 0
+    #
+    #     # If there are no incumbents at all, we just use the new config as new incumbent
+    #     # Problem: We can add running incumbents
+    #     if len(incumbents) == 0:  # incumbent_isb_keys is None and len(incumbents) == 0:
+    #         logger.info(f"Added config {config_hash} as new incumbent because there are no incumbents yet.")
+    #         self._update_trajectory([config])
+    #
+    #         # Nothing else to do
+    #         return
+    #
+    #     # Comparison keys
+    #     # This one is a bit tricky: We would have problems if we compare with budgets because we might have different
+    #     # scenarios (depending on the incumbent selection specified in Successive Halving).
+    #     # 1) Any budget/highest observed budget: We want to get rid of the budgets because if we know it is calculated
+    #     # on the same instance-seed already then we are ready to go. Imagine we would check for the same budgets,
+    #     # then the configs can not be compared although the user does not care on which budgets configurations have
+    #     # been evaluated.
+    #     # 2) Highest budget: We only want to compare the configs if they are evaluated on the highest budget.
+    #     # Here we do actually care about the budgets. Please see the ``get_instance_seed_budget_keys`` method from
+    #     # Successive Halving to get more information.
+    #     # Noitce: compare=True only takes effect when subclass implemented it. -- e.g. in SH it
+    #     # will remove the budgets from the keys.
+    #     config_isb_comparison_keys = self.get_instance_seed_budget_keys(config, compare=True)
+    #     # Find the lowest intersection of instance-seed-budget keys for all incumbents.
+    #     config_incumbent_isb_comparison_keys = self.get_incumbent_instance_seed_budget_keys(compare=True)  # Intersection
+    #
+    #     # Now we have to check if the new config has been evaluated on the same keys as the incumbents
+    #     # TODO If the config is part of the incumbent then it should always be a subset of the intersection
+    #     if not all([key in config_isb_comparison_keys for key in config_incumbent_isb_comparison_keys]):
+    #         # We can not tell if the new config is better/worse than the incumbents because it has not been
+    #         # evaluated on the necessary trials
+    #
+    #         # TODO JG add procedure to check if intermediate comparison
+    #         if self._check_for_intermediate_comparison(config):
+    #             if not self._intermediate_comparison(config):
+    #                 #Reject config
+    #                 logger.debug(f"Rejected config {config_hash} in an intermediate comparison because it "
+    #                              f"is dominated by a randomly sampled config from the incumbents on "
+    #                              f"{len(config_isb_keys)} trials.")
+    #                 self._add_rejected_config(config)
+    #
+    #             return
+    #
+    #         else:
+    #             #TODO
+    #
+    #             logger.debug(
+    #                 f"Could not compare config {config_hash} with incumbents because it's evaluated on "
+    #                 f"different trials."
+    #             )
+    #
+    #             # The config has to go to a queue now as it is a challenger and a potential incumbent
+    #             return
+    #     else:
+    #         # If all instances are available and the config is incumbent and even evaluated on more trials
+    #         # then there's nothing we can do
+    #         # TODO JG: Will always be false, because the incumbent with the smallest number of trials has been ran.
+    #         # TODO JG: Hence: len(config_isb_keys) == len(incumbent_isb_keys)
+    #         if config in incumbents and len(config_isb_keys) > len(incumbent_isb_keys):
+    #             logger.debug(
+    #                 "Config is already an incumbent but can not be compared to other incumbents because "
+    #                 "the others are missing trials."
+    #             )
+    #             return
+    #
+    #     if self._final_comparison(config):
+    #
+    #
+    #     # Add config to incumbents so that we compare only the new config and existing incumbents
+    #     if config not in incumbents:
+    #         incumbents.append(config)
+    #         incumbent_ids.append(config_id)
+    #
+    #     # Now we get all instance-seed-budget keys for each incumbent (they might be different when using budgets)
+    #     all_incumbent_isb_keys = []
+    #     for incumbent in incumbents:
+    #         # all_incumbent_isb_keys.append(self.get_instance_seed_budget_keys(incumbent))
+    #         all_incumbent_isb_keys.append(self.get_incumbent_instance_seed_budget_keys()) # !!!!!
+    #
+    #     #TODO JG it is guaruanteed that the challenger has ran on the intersection of isb_keys
+    #     # of the incumbents, however this is not the case in this part of the code.
+    #     # Here, all the runs of each incumbent used. Maybe the intensifier ensures that the incumbents
+    #     # have ran on the same isb keys in the first place?
+    #     # FIXED IN LINE 580
+    #
+    #     #TODO JG get intersection for all incumbent_isb_keys and check if it breaks budget.
+    #
+    #     # We compare the incumbents now and only return the ones on the Pareto front
+    #     new_incumbents = self._calculate_pareto_front(rh, incumbents, all_incumbent_isb_keys)
+    #     new_incumbent_ids = [rh.get_config_id(c) for c in new_incumbents]
+    #
+    #     if len(previous_incumbents) == len(new_incumbents):
+    #         if previous_incumbents == new_incumbents:
+    #             # No changes in the incumbents
+    #             self._remove_rejected_config(config_id) # This means that the challenger is not rejected!!
+    #             return
+    #         else:
+    #             # In this case, we have to determine which config replaced which incumbent and reject it
+    #             # We will remove the oldest configuration (the one with the lowest id) because
+    #             # set orders the ids ascending.
+    #             self._remove_incumbent(config=config, previous_incumbent_ids=previous_incumbent_ids, new_incumbent_ids=new_incumbent_ids)
+    #     elif len(previous_incumbents) < len(new_incumbents):
+    #         # Config becomes a new incumbent; nothing is rejected in this case
+    #         self._remove_rejected_config(config_id)
+    #         logger.info(
+    #             f"Config {config_hash} is a new incumbent. " f"Total number of incumbents: {len(new_incumbents)}."
+    #         )
+    #     else:  # len(previous_incumbents) > len(new_incumbents)
+    #         # There might be situations that the incumbents might be removed because of updated cost information of
+    #         # config
+    #         for incumbent in previous_incumbents:
+    #             if incumbent not in new_incumbents:
+    #                 self._add_rejected_config(incumbent)
+    #                 logger.debug(
+    #                     f"Removed incumbent {get_config_hash(incumbent)} because of the updated costs from config "
+    #                     f"{config_hash}."
+    #                 )
+    #
+    #     # Cut incumbents: We only want to keep a specific number of incumbents
+    #     # We use the crowding distance for that
+    #     if len(new_incumbents) > self._max_incumbents:
+    #         new_incumbents = self._cut_incumbents(new_incumbents, all_incumbent_isb_keys)
+    #         #TODO JG adjust. Other option: statistical test or HV (SMS-EMOA reduce function)
+    #
+    #     self._update_trajectory(new_incumbents)
 
     def _cut_incumbents(self, incumbent_ids: list[int], all_incumbent_isb_keys: list[list[InstanceSeedBudgetKey]]) -> list[int]:
         new_incumbents = sort_by_crowding_distance(self.runhistory, incumbent_ids, all_incumbent_isb_keys)

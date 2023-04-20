@@ -82,11 +82,11 @@ class MOIntensifierMixin(object):
         """
         return self.runhistory.get_instance_seed_budget_keys(config, highest_observed_budget_only=True)
 
-class MOIntensifier(Intensifier, MOIntensifierMixin):
+class MOIntensifier(MOIntensifierMixin, Intensifier):
     pass
 
-class MOSuccessiveHalving(SuccessiveHalving, MOIntensifierMixin):
+class MOSuccessiveHalving(MOIntensifierMixin, SuccessiveHalving):
     pass
 
-class MOHyperband(Hyperband, MOIntensifierMixin):
+class MOHyperband(MOIntensifierMixin, Hyperband):
     pass
