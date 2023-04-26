@@ -52,6 +52,7 @@ class AbstractRunHistoryEncoder:
         scale_percentage: int = 5,
         seed: int | None = None,
         native_multi_objective: bool = False,
+        normalize: bool = True,
     ) -> None:
         if considered_states is None:
             raise TypeError("No success states are given.")
@@ -89,6 +90,7 @@ class AbstractRunHistoryEncoder:
         self._runhistory: RunHistory | None = None
 
         self._native_multi_objective = native_multi_objective
+        self._normalize = normalize
 
     @property
     def meta(self) -> dict[str, Any]:
@@ -303,3 +305,4 @@ class AbstractRunHistoryEncoder:
         transformed_values : np.ndarray
         """
         raise NotImplementedError
+

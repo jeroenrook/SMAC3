@@ -11,6 +11,7 @@ def _get_costs(
     runhistory: RunHistory,
     configs: list[Configuration],
     config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]],
+    normalize: bool = False,
 ) -> np.ndarray:
     """Returns the costs of the passed configurations.
 
@@ -22,6 +23,8 @@ def _get_costs(
         The configs for which the costs should be returned.
     config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]]
         The instance-seed budget keys for the configs for which the costs should be returned.
+    normalize: bool
+        If the costs should be normalised
 
     Returns
     -------
@@ -38,7 +41,7 @@ def _get_costs(
         # configuration
         # However, we only want to consider the config trials
         # Average cost is a list of floats (one for each objective)
-        average_cost = runhistory.average_cost(config, isb_keys, normalize=False)
+        average_cost = runhistory.average_cost(config, isb_keys, normalize=normalize)
         average_costs += [average_cost]
 
     # Let's work with a numpy array for efficiency

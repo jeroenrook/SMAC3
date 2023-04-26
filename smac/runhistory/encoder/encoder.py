@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 
 
 class RunHistoryEncoder(AbstractRunHistoryEncoder):
+
     def _build_matrix(
         self,
         trials: Mapping[TrialKey, TrialValue],
@@ -54,7 +55,7 @@ class RunHistoryEncoder(AbstractRunHistoryEncoder):
 
                 # Let's normalize y here
                 # We use the objective_bounds calculated by the runhistory
-                y_ = normalize_costs(run.cost, self.runhistory.objective_bounds)
+                y_ = normalize_costs(run.cost, self.runhistory.objective_bounds) if self._normalize else run.cost
                 y_agg = self._multi_objective_algorithm(y_)
                 y[row] = y_agg
             else:
