@@ -127,6 +127,12 @@ class ConfigSelector:
         if len(self._initial_design_configs) == 0:
             raise RuntimeError("SMAC needs initial configurations to work.")
 
+        if hasattr(self._acquisition_function, "runhistory"):
+            self._acquisition_function.runhistory = runhistory
+
+        if hasattr(self._acquisition_function, "runhistory_encoder"):
+            self._acquisition_function.runhistory_encoder = runhistory_encoder
+
     @property
     def meta(self) -> dict[str, Any]:
         """Returns the meta data of the created object."""

@@ -11,12 +11,14 @@ from abc import ABC
 
 from smac.intensifier.abstract_intensifier import AbstractIntensifier
 from smac.runhistory import TrialInfo, RunHistory
+from smac.runhistory.encoder import AbstractRunHistoryEncoder
 from smac.runhistory.dataclasses import InstanceSeedBudgetKey
 from smac.scenario import Scenario
 from smac.utils.configspace import get_config_hash
 from smac.utils.logging import get_logger
 from smac.acquisition.function.abstract_acquisition_function import AbstractAcquisitionFunction
 from smac.model.abstract_model import AbstractModel
+from smac.utils.multi_objective import normalize_costs
 
 import torch
 from botorch.acquisition.multi_objective import ExpectedHypervolumeImprovement
@@ -157,6 +159,28 @@ class PHVI(AbstractAcquisitionFunction):
         self._required_updates = ("model",)
         self.population_hv = None
         self.population_costs = None
+        self._reference_point = None
+        self._objective_bounds = None
+
+        self._runhistory: RunHistory | None = None
+        self._runhistory_encoder: AbstractRunHistoryEncoder | None = None
+
+
+    @property
+    def runhistory(self) -> RunHistory:
+        return self._runhistory
+
+    @runhistory.setter
+    def runhistory(self, runhistory: RunHistory):
+        self._runhistory = runhistory
+
+    @property
+    def runhistory_encoder(self) -> AbstractRunHistoryEncoder:
+        return self._runhistory_encoder
+
+    @runhistory_encoder.setter
+    def runhistory_encoder(self, runhistory_encoder: AbstractRunHistoryEncoder):
+        self._runhistory_encoder = runhistory_encoder
 
     @property
     def name(self) -> str:
@@ -179,8 +203,12 @@ class PHVI(AbstractAcquisitionFunction):
         population_X = np.array([config.get_array() for config in population_configs])
         population_costs, _ = self.model.predict_marginalized(population_X)
 
+        objective_bounds = np.array(self.runhistory.objective_bounds)
+        self._objective_bounds = self.runhistory_encoder.transform_response_values(objective_bounds)
+        self._reference_point = [1.1]*len(self._objective_bounds)
+
         # Compute HV
-        population_hv = self.get_hypervolume(population_costs, (1.1, 1.1))
+        population_hv = self.get_hypervolume(population_costs)
 
         self.population_costs = population_costs
         self.population_hv = population_hv
@@ -201,10 +229,13 @@ class PHVI(AbstractAcquisitionFunction):
         ------
         hypervolume: float
         """
+        # Normalize the objectives here to give equal attention to the objectives when computing the HV
+        points = [normalize_costs(p, self._objective_bounds) for p in points]
+
         hv = pygmo.hypervolume(points)
-        if reference_point is None:
-            reference_point = hv.refpoint(offset=1)
-        return hv.compute(reference_point)  # TODO: Fix reference points
+        # if reference_point is None:
+        #     self._reference_point = hv.refpoint(offset=1)
+        return hv.compute(self._reference_point)
 
     def _compute(self, X: np.ndarray) -> np.ndarray:
         """Computes the PHVI values and its derivatives.
@@ -229,11 +260,14 @@ class PHVI(AbstractAcquisitionFunction):
         # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
         # Option 2: Only on instances of population
         # Option 3: EVHI per instance and aggregate afterwards
-        mean, var_ = self.model.predict_marginalized(X)
+        mean, var_ = self.model.predict_marginalized(X) #Expected to be not normalized
+
 
         phvi = np.zeros(len(X))
         for i, indiv in enumerate(mean):
-            phvi[i] = self.get_hypervolume(list(self.population_costs) + [indiv], (1.1, 1.1)) - self.population_hv
+            points = list(self.population_costs) + [indiv]
+            hv = self.get_hypervolume(points)
+            phvi[i] = hv - self.population_hv
 
         # if len(X) == 10000:
         #     for op in ["max", "min", "mean", "median"]:
