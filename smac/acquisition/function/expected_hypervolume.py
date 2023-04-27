@@ -39,8 +39,10 @@ class _PosteriorProxy(object):
 
 
 class _ModelProxy(Model, ABC):
-    def __init__(self, model: AbstractModel):
+    def __init__(self, model: AbstractModel, objective_bounds: list[tuple[float, float]]):
+        super(_ModelProxy).__init__()
         self.model = model
+        self._objective_bounds = objective_bounds
 
     def posterior(self, X: Tensor, **kwargs: Any) -> _PosteriorProxy:
         """Docstring
@@ -59,6 +61,10 @@ class _ModelProxy(Model, ABC):
         # start_time = time.time()
         # print(f"Start predicting ")
         mean, var_ = self.model.predict_marginalized(X)
+        normalized_mean = np.array([normalize_costs(m, self._objective_bounds) for m in mean])
+        scale = normalized_mean / mean
+        var_ *= scale  # Scale variance accordingly
+        mean = normalized_mean
         # print(f"Done in {time.time() - start_time}s")
         post = _PosteriorProxy()
         post.mean = torch.asarray(mean).reshape(X.shape[0], 1, -1)  # 2D -> 3D
@@ -66,105 +72,18 @@ class _ModelProxy(Model, ABC):
 
         return post
 
-class EHVI(AbstractAcquisitionFunction):
-    def __init__(self):
-        super(EHVI, self).__init__()
-        self._required_updates = ("model",)
-        self._ehvi: ExpectedHypervolumeImprovement | None = None
-
-    @property
-    def name(self) -> str:
-        return "Expected Hypervolume Improvement"
-
-    def _update(self, **kwargs: Any) -> None:
-        # TODO either pass runhistory in config_selector
-        # and store incumbents in runhistory -or- work
-        # with a callback. This class can own a callback
-        # updating the partitioning and the ehv model
-        super(EHVI, self)._update(**kwargs)
-
-        incumbents: list[Configuration] = kwargs.get("incumbents", None)
-        if incumbents is None:
-            raise ValueError(f"Incumbents are not passed properly.")
-        if len(incumbents) == 0:
-            raise ValueError(f"No incumbents here. Did the intensifier properly "
-                                "update the incumbents in the runhistory?")
-
-        # Update EHVI
-        # Prediction all
-        population_configs = incumbents
-        population_X = np.array([config.get_array() for config in population_configs])
-        population_costs, _ = self.model.predict_marginalized(population_X)
-
-        # Compute HV
-        # population_hv = self.get_hypervolume(population_costs)
-
-        # BOtorch EHVI implementation
-        bomodel = _ModelProxy(self.model)
-        ref_point = pygmo.hypervolume(population_costs).refpoint(
-            offset=1
-        )  # TODO get proper reference points from user/cutoffs
-        # ref_point = torch.asarray(ref_point)
-        # TODO partition from all runs instead of only population?
-        # TODO NondominatedPartitioning and ExpectedHypervolumeImprovement seem no too difficult to implement natively
-        # TODO pass along RNG
-        # Transfrom the objective space to cells based on the population
-        partitioning = NondominatedPartitioning(torch.asarray(ref_point), torch.asarray(population_costs))
-        self._ehvi = ExpectedHypervolumeImprovement(bomodel, ref_point, partitioning)
-
-    def _compute(self, X: np.ndarray) -> np.ndarray:
-        """Computes the EHVI values and its derivatives.
-
-        Parameters
-        ----------
-        X: np.ndarray(N, D), The input points where the acquisition function
-            should be evaluated. The dimensionality of X is (N, D), with N as
-            the number of points to evaluate at and D is the number of
-            dimensions of one X.
-
-        Returns
-        -------
-        np.ndarray(N,1)
-            Expected HV Improvement of X
-        """
-        if self._ehvi is None:
-            raise ValueError(f"The expected hypervolume improvement is not defined yet. Call self.update.")
-
-        if len(X.shape) == 1:
-            X = X[:, np.newaxis]
-
-        # m, var_ = self.model.predict_marginalized_over_instances(X)
-        # Find a way to propagate the variance into the HV
-        boX = torch.asarray(X).reshape(X.shape[0], 1, -1)  # 2D -> #3D
-        improvements = self._ehvi(boX).numpy().reshape(-1, 1)  # TODO here are the expected hv improvements computed.
-        return improvements
-
-        # TODO non-dominated sorting of costs. Compute EHVI only until the EHVI is not expected to improve anymore.
-        # Option 1: Supplement missing instances of population with acq. function to get predicted performance over
-        # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
-        # Option 2: Only on instances of population
-        # Option 3: EVHI per instance and aggregate afterwards
-        # ehvi = np.zeros(len(X))
-        # for i, indiv in enumerate(m):
-        #     ehvi[i] = self.get_hypervolume(population_costs + [indiv]) - population_hv
-        #
-        # return ehvi.reshape(-1, 1)
-
-class PHVI(AbstractAcquisitionFunction):
+class AbstractHVI(AbstractAcquisitionFunction):
     def __init__(self):
         """Computes for a given x the predicted hypervolume improvement as
         acquisition value.
         """
-        super(PHVI, self).__init__()
+        super(AbstractHVI, self).__init__()
         self._required_updates = ("model",)
-        self.population_hv = None
-        self.population_costs = None
         self._reference_point = None
         self._objective_bounds = None
 
         self._runhistory: RunHistory | None = None
         self._runhistory_encoder: AbstractRunHistoryEncoder | None = None
-
 
     @property
     def runhistory(self) -> RunHistory:
@@ -184,12 +103,11 @@ class PHVI(AbstractAcquisitionFunction):
 
     @property
     def name(self) -> str:
-        return "Predicted Hypervolume Improvement"
+        return "Abstract Hypervolume Improvement"
 
     def _update(self, **kwargs: Any) -> None:
-        super(PHVI, self)._update(**kwargs)
+        super(AbstractHVI, self)._update(**kwargs)
 
-        # TODO abstract this away in a general HVI class
         incumbents: list[Configuration] = kwargs.get("incumbents", None)
         if incumbents is None:
             raise ValueError(f"Incumbents are not passed properly.")
@@ -197,23 +115,10 @@ class PHVI(AbstractAcquisitionFunction):
             raise ValueError(f"No incumbents here. Did the intensifier properly "
                                 "update the incumbents in the runhistory?")
 
-        # Update PHVI
-        # Prediction all
-        population_configs = incumbents
-        population_X = np.array([config.get_array() for config in population_configs])
-        population_costs, _ = self.model.predict_marginalized(population_X)
-
         objective_bounds = np.array(self.runhistory.objective_bounds)
-        self._objective_bounds = self.runhistory_encoder.transform_response_values(objective_bounds)
-        self._reference_point = [1.1]*len(self._objective_bounds)
-
-        # Compute HV
-        population_hv = self.get_hypervolume(population_costs)
-
-        self.population_costs = population_costs
-        self.population_hv = population_hv
-
-        logger.info(f"New population HV: {population_hv}")
+        self._objective_bounds = self.runhistory_encoder.transform_response_values(
+            objective_bounds)
+        self._reference_point = [1.1] * len(self._objective_bounds)
 
     def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
         """
@@ -274,5 +179,153 @@ class PHVI(AbstractAcquisitionFunction):
         #         val = getattr(np, op)(phvi)
         #         print(f"{op:6} - {val}")
         #     time.sleep(1.5)
+
+        return phvi.reshape(-1, 1)
+
+class EHVI(AbstractHVI):
+    def __init__(self):
+        super(EHVI, self).__init__()
+        self._ehvi: ExpectedHypervolumeImprovement | None = None
+
+    @property
+    def name(self) -> str:
+        return "Expected Hypervolume Improvement"
+
+    def _update(self, **kwargs: Any) -> None:
+        super(EHVI, self)._update(**kwargs)
+        incumbents: list[Configuration] = kwargs.get("incumbents", None)
+
+        # Update EHVI
+        # Prediction all
+        population_configs = incumbents
+        population_X = np.array([config.get_array() for config in population_configs])
+        population_costs, _ = self.model.predict_marginalized(population_X)
+        # Normalize the objectives here to give equal attention to the objectives when computing the HV
+        population_costs = [normalize_costs(p, self._objective_bounds) for p in population_costs]
+
+        # BOtorch EHVI implementation
+        bomodel = _ModelProxy(self.model, self._objective_bounds)
+        # ref_point = pygmo.hypervolume(population_costs).refpoint(
+        #     offset=1
+        # )  # TODO get proper reference points from user/cutoffs
+        ref_point = [1.1] * len(self._objective_bounds)
+        # ref_point = torch.asarray(ref_point)
+        # TODO partition from all runs instead of only population?
+        # TODO NondominatedPartitioning and ExpectedHypervolumeImprovement seem no too difficult to implement natively
+        # TODO pass along RNG
+        # Transfrom the objective space to cells based on the population
+        partitioning = NondominatedPartitioning(torch.asarray(ref_point), torch.asarray(population_costs))
+        self._ehvi = ExpectedHypervolumeImprovement(bomodel, ref_point, partitioning)
+
+    def _compute(self, X: np.ndarray) -> np.ndarray:
+        """Computes the EHVI values and its derivatives.
+
+        Parameters
+        ----------
+        X: np.ndarray(N, D), The input points where the acquisition function
+            should be evaluated. The dimensionality of X is (N, D), with N as
+            the number of points to evaluate at and D is the number of
+            dimensions of one X.
+
+        Returns
+        -------
+        np.ndarray(N,1)
+            Expected HV Improvement of X
+        """
+        if self._ehvi is None:
+            raise ValueError(f"The expected hypervolume improvement is not defined yet. Call self.update.")
+
+        if len(X.shape) == 1:
+            X = X[:, np.newaxis]
+
+        # m, var_ = self.model.predict_marginalized_over_instances(X)
+        # Find a way to propagate the variance into the HV
+        boX = torch.asarray(X).reshape(X.shape[0], 1, -1)  # 2D -> #3D
+        improvements = self._ehvi(boX).numpy().reshape(-1, 1)  # TODO here are the expected hv improvements computed.
+        return improvements
+
+        # TODO non-dominated sorting of costs. Compute EHVI only until the EHVI is not expected to improve anymore.
+        # Option 1: Supplement missing instances of population with acq. function to get predicted performance over
+        # all instances. Idea is this prevents optimizing for the initial instances which get it stuck in local optima
+        # Option 2: Only on instances of population
+        # Option 3: EVHI per instance and aggregate afterwards
+        # ehvi = np.zeros(len(X))
+        # for i, indiv in enumerate(m):
+        #     ehvi[i] = self.get_hypervolume(population_costs + [indiv]) - population_hv
+        #
+        # return ehvi.reshape(-1, 1)
+
+class PHVI(AbstractHVI):
+
+    def __init__(self):
+        super(PHVI, self).__init__()
+        self.population_hv = None
+        self.population_costs = None
+
+    @property
+    def name(self) -> str:
+        return "Predicted Hypervolume Improvement"
+
+    def _update(self, **kwargs: Any) -> None:
+        super(PHVI, self)._update(**kwargs)
+        incumbents: list[Configuration] = kwargs.get("incumbents", None)
+
+        # Update PHVI
+        # Prediction all
+        population_configs = incumbents
+        population_X = np.array([config.get_array() for config in population_configs])
+        population_costs, _ = self.model.predict_marginalized(population_X)
+
+        # Compute HV
+        population_hv = self.get_hypervolume(population_costs)
+
+        self.population_costs = population_costs
+        self.population_hv = population_hv
+
+        logger.info(f"New population HV: {population_hv}")
+
+    def get_hypervolume(self, points: np.ndarray = None, reference_point: list = None) -> float:
+        """
+        Compute the hypervolume
+
+        Parameters
+        ----------
+        points : np.ndarray
+            A 2d numpy array. 1st dimension is an entity and the 2nd dimension are the costs
+        reference_point : list
+
+        Return
+        ------
+        hypervolume: float
+        """
+        # Normalize the objectives here to give equal attention to the objectives when computing the HV
+        points = [normalize_costs(p, self._objective_bounds) for p in points]
+        hv = pygmo.hypervolume(points)
+        return hv.compute(self._reference_point)
+
+    def _compute(self, X: np.ndarray) -> np.ndarray:
+        """Computes the PHVI values and its derivatives.
+
+        Parameters
+        ----------
+        X: np.ndarray(N, D), The input points where the acquisition function
+            should be evaluated. The dimensionality of X is (N, D), with N as
+            the number of points to evaluate at and D is the number of
+            dimensions of one X.
+
+        Returns
+        -------
+        np.ndarray(N,1)
+            Expected HV Improvement of X
+        """
+        if len(X.shape) == 1:
+            X = X[:, np.newaxis]
+
+        mean, _ = self.model.predict_marginalized(X) #Expected to be not normalized
+        phvi = np.zeros(len(X))
+        for i, indiv in enumerate(mean):
+            points = list(self.population_costs) + [indiv]
+            hv = self.get_hypervolume(points)
+            phvi[i] = hv - self.population_hv
 
         return phvi.reshape(-1, 1)
