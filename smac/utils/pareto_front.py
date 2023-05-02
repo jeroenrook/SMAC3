@@ -108,7 +108,7 @@ def sort_by_crowding_distance(
     sorted_list : list[Configuration]
         Configurations sorted by crowding distance.
     """
-    F = _get_costs(runhistory, configs, config_instance_seed_budget_keys)
+    F = _get_costs(runhistory, configs, config_instance_seed_budget_keys, normalize=True)
     infinity = 1e14
 
     n_points = F.shape[0]

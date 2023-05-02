@@ -57,9 +57,9 @@ class MOIntensifierMixin(object):
             config_instance_seed_budget_keys=config_instance_seed_budget_keys,
         )
 
-    def _remove_incumbent(self, config: Configuration, previous_incumbent_ids: list[int], new_incumbent_ids: list[int]) -> None:
-        # TODO adjust
-        raise NotImplementedError
+    # def _remove_incumbent(self, config: Configuration, previous_incumbent_ids: list[int], new_incumbent_ids: list[int]) -> None:
+    #     # TODO adjust
+    #     raise NotImplementedError
 
     def _cut_incumbents(self, incumbent_ids: list[int], all_incumbent_isb_keys: list[list[InstanceSeedBudgetKey]]) -> list[int]:
         #TODO JG sort by hypervolume

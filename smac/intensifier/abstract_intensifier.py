@@ -606,11 +606,7 @@ class AbstractIntensifier:
         new_incumbent_ids = [rh.get_config_id(c) for c in new_incumbents]
 
         # Update trajectory
-        if previous_incumbents == new_incumbents:
-            # No changes in the incumbents -> Challenger is rejected, incumbent remains
-            # if config not in new_incumbents:
-            #     self._add_rejected_config(config)  # TODO JG: Here the config was initially removed from the rejected list...
-            # else:
+        if previous_incumbents == new_incumbents:  # Only happens with incumbent config
             self._remove_rejected_config(config)
             return
         elif len(previous_incumbents) == len(new_incumbents):

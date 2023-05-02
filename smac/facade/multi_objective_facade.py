@@ -13,6 +13,7 @@ from smac.model.multi_objective_model import MultiObjectiveModel
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
 from smac.random_design.probability_design import ProbabilityRandomDesign
 from smac.runhistory.encoder.encoder import RunHistoryEncoder
+from smac.runhistory.encoder.log_encoder import RunHistoryLogEncoder
 from smac.scenario import Scenario
 from smac.utils.logging import get_logger
 from smac.acquisition.maximizer.multi_objective_search import MOLocalAndSortedRandomSearch
@@ -81,7 +82,7 @@ class MultiObjectiveFacade(AbstractFacade):
     def get_intensifier(  # type: ignore
             scenario: Scenario,
             *,
-            max_config_calls: int = 3,
+            max_config_calls: int = 2000,
             max_incumbents: int = 10,
     ) -> Intensifier:
         """Returns ``MOIntensifier`` as intensifier. Uses the default configuration for ``race_against``.
@@ -89,7 +90,7 @@ class MultiObjectiveFacade(AbstractFacade):
         Parameters
         ----------
         scenario : Scenario
-        max_config_calls : int, defaults to 3
+        max_config_calls : int, defaults to 2000
             Maximum number of configuration evaluations. Basically, how many instance-seed keys should be max evaluated
             for a configuration.
         max_incumbents : int, defaults to 10
@@ -130,30 +131,6 @@ class MultiObjectiveFacade(AbstractFacade):
         )
 
         return optimizer
-
-    @staticmethod
-    # TODO update intensifier
-    def get_intensifier(
-        scenario: Scenario,
-        *,
-        max_config_calls: int = 2000,
-        max_incumbents: int = 10,
-    ) -> Intensifier:
-        """Returns ``Intensifier`` as intensifier. Supports budgets.
-
-        Parameters
-        ----------
-        max_config_calls : int, defaults to 3
-            Maximum number of configuration evaluations. Basically, how many instance-seed keys should be evaluated at
-            maximum for a configuration.
-        max_incumbents : int, defaults to 10
-            How many incumbents to keep track of in the case of multi-objective.
-        """
-        return Intensifier(
-            scenario=scenario,
-            max_config_calls=max_config_calls,
-            max_incumbents=max_incumbents,
-        )
 
     @staticmethod
     # TODO update initial design to LHD
@@ -207,4 +184,5 @@ class MultiObjectiveFacade(AbstractFacade):
     @staticmethod
     def get_runhistory_encoder(scenario: Scenario) -> RunHistoryEncoder:
         """Returns the default runhistory encoder with native multi objective support enabled."""
-        return RunHistoryEncoder(scenario, native_multi_objective=True)
+        return RunHistoryEncoder(scenario, native_multi_objective=True, normalize=False)
+        # return RunHistoryLogEncoder(scenario, native_multi_objective=True, normalize=False)
