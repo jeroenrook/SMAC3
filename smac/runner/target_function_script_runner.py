@@ -183,7 +183,7 @@ class TargetFunctionScriptRunner(AbstractSerialRunner):
         if "additional_info" in outputs:
             additional_info["additional_info"] = outputs["additional_info"]
 
-        if status != StatusType.SUCCESS:
+        if not status in [StatusType.SUCCESS, StatusType.TIMEOUT]:
             additional_info["error"] = error
 
             if cost != self._crash_cost:

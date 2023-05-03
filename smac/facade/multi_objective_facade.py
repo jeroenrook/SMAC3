@@ -8,6 +8,7 @@ from smac.facade.abstract_facade import AbstractFacade
 from smac.initial_design.default_design import DefaultInitialDesign
 from smac.intensifier.intensifier import Intensifier
 from smac.intensifier.multi_objective_intensifier import MOIntensifier
+from smac.intensifier.mixins import intermediate_update, intermediate_decision, update_incumbent
 from smac.model.random_forest.random_forest import RandomForest
 from smac.model.multi_objective_model import MultiObjectiveModel
 from smac.multi_objective.aggregation_strategy import NoAggregationStrategy
@@ -96,7 +97,12 @@ class MultiObjectiveFacade(AbstractFacade):
         max_incumbents : int, defaults to 10
             How many incumbents to keep track of in the case of multi-objective.
         """
-        return MOIntensifier(
+        class NewIntensifier(intermediate_decision.NewCostDominatesOldCost,
+                             intermediate_update.ClosestIncumbentComparison,
+                             MOIntensifier):
+            pass
+
+        return NewIntensifier(
             scenario=scenario,
             max_config_calls=max_config_calls,
             max_incumbents=max_incumbents,

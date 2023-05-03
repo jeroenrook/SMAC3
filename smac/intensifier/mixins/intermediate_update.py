@@ -40,6 +40,7 @@ logger = get_logger(__name__)
 class DebugComparison(object):
 
     def _register_comparison(self, **kwargs):
+        logger.debug(f"Made intermediate comparison with {kwargs['name']} comparison ")
         if not hasattr(self, "_intermediate_comparisons_log"):
             self._intermediate_comparisons_log = []
         self._intermediate_comparisons_log.append(kwargs)
@@ -296,7 +297,7 @@ class NoComparison(DebugComparison):
         self._register_comparison(config=config,
                                   incumbent=self.get_incumbents(),
                                   isb_keys=len(config_isb_keys),
-                                  costs=self.get_costs(config),
+                                  costs=self._get_costs_comp(config),
                                   prediction=verdict,
                                   name="NoComp")
         return verdict

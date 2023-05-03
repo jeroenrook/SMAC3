@@ -118,23 +118,12 @@ class DoublingNComparison():
         config_id = self.runhistory.get_config_id(config)
         config_hash = get_config_hash(config)
 
-        # Do not compare very early in the process
-        # if len(config_isb_keys) < 4:
-        #     return False
+        max_trigger_number = int(np.ceil(np.log2(self._max_config_calls)))
+        trigger_points = [(2**n) - 1 for n in range(1, max_trigger_number + 1)]  # 1, 3, 7, 15, ...
+        logger.debug(f"{trigger_points=}")
+        logger.debug(f"{len(config_isb_keys)=}")
+        return len(config_isb_keys) in trigger_points
 
-        # Find N in _queue
-        N = None
-        for c, cn in self._queue:
-            if config == c:
-                N = cn
-                break
-
-        if N is None:
-            logger.debug(
-                f"This should not happen, but config {config_hash} is not in the queue.")
-            return False
-
-        return len(config_isb_keys) == N
 
 class DoublingNComparisonFour():
 
@@ -153,20 +142,8 @@ class DoublingNComparisonFour():
         config_id = self.runhistory.get_config_id(config)
         config_hash = get_config_hash(config)
 
-        # Do not compare very early in the process
-        if len(config_isb_keys) < 4:
-            return False
-
-        # Find N in _queue
-        N = None
-        for c, cn in self._queue:
-            if config == c:
-                N = cn
-                break
-
-        if N is None:
-            logger.debug(
-                f"This should not happen, but config {config_hash} is not in the queue.")
-            return False
-
-        return len(config_isb_keys) == N
+        max_trigger_number = int(np.ceil(np.log2(self._max_config_calls)))
+        trigger_points = [(2 ** n) - 1 for n in range(2, max_trigger_number + 1)]  # 1, 3, 7, 15, ...
+        logger.debug(f"{trigger_points=}")
+        logger.debug(f"{len(config_isb_keys)=}")
+        return len(config_isb_keys) in trigger_points

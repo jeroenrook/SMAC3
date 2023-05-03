@@ -15,6 +15,7 @@ from smac.random_design.probability_design import ProbabilityRandomDesign
 from smac.runhistory.encoder.encoder import RunHistoryEncoder
 from smac.scenario import Scenario
 from smac.utils.logging import get_logger
+from smac.intensifier.mixins import intermediate_update, intermediate_decision
 
 __copyright__ = "Copyright 2022, automl.org"
 __license__ = "3-clause BSD"
@@ -115,7 +116,12 @@ class AlgorithmConfigurationFacade(AbstractFacade):
         max_incumbents : int, defaults to 10
             How many incumbents to keep track of in the case of multi-objective.
         """
-        return Intensifier(
+        class NewIntensifier(intermediate_decision.NewCostDominatesOldCost,
+                             intermediate_update.ClosestIncumbentComparison,
+                             Intensifier):
+            pass
+
+        return NewIntensifier(
             scenario=scenario,
             max_config_calls=max_config_calls,
             max_incumbents=max_incumbents,

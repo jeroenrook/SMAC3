@@ -50,7 +50,6 @@ class MOIntensifierMixin(object):
         configs: list[Configuration],
         config_instance_seed_budget_keys: list[list[InstanceSeedBudgetKey]],
     ) -> list[Configuration]:
-    # TODO use fast non dominance sorting
         return calculate_pareto_front(
             runhistory=runhistory,
             configs=configs,
