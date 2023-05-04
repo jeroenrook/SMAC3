@@ -118,11 +118,14 @@ class DoublingNComparison():
         config_id = self.runhistory.get_config_id(config)
         config_hash = get_config_hash(config)
 
-        max_trigger_number = int(np.ceil(np.log2(self._max_config_calls)))
-        trigger_points = [(2**n) - 1 for n in range(1, max_trigger_number + 1)]  # 1, 3, 7, 15, ...
-        logger.debug(f"{trigger_points=}")
-        logger.debug(f"{len(config_isb_keys)=}")
-        return len(config_isb_keys) in trigger_points
+        # max_trigger_number = int(np.ceil(np.log2(self._max_config_calls)))
+        # trigger_points = [(2**n) - 1 for n in range(1, max_trigger_number + 1)]  # 1, 3, 7, 15, ...
+        # logger.debug(f"{trigger_points=}")
+        # logger.debug(f"{len(config_isb_keys)=}")
+        # return len(config_isb_keys) in trigger_points
+
+        nkeys = len(config_isb_keys)
+        return (nkeys+1) & nkeys == 0  # checks if nkeys+1 is a power of 2 (complies with the sequence (2**n)-1)
 
 
 class DoublingNComparisonFour():
