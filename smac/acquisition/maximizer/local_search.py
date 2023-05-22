@@ -90,15 +90,10 @@ class LocalSearch(AbstractAcquisitionMaximizer):
         n_points: int,
         additional_start_points: list[tuple[float, Configuration]] | None = None,
     ) -> list[tuple[float, Configuration]]:
-        """Start a local search from the given startpoints. Iteratively collect neighbours
-        using Configspace.utils.get_one_exchange_neighbourhood and evaluate them.
-        If the new config is better than the current best, the local search is coninued from the
-        new config.
+        """Start a local search from the given startpoint.
 
         Quit if either the max number of steps is reached or
-        no neighbor with a higher improvement was found or the number of local steps self._n_steps_plateau_walk
-        for each of the starting point is depleted.
-
+        no neighbor with an higher improvement was found.
 
         Parameters
         ----------
@@ -123,7 +118,7 @@ class LocalSearch(AbstractAcquisitionMaximizer):
         # Sort according to acq value
         configs_acq.sort(reverse=True, key=lambda x: x[0])
         for a, inc in configs_acq:
-            inc.origin = "Acquisition Function Maximizer: Local Search"
+            inc.origin = "Local Search"
 
         return configs_acq
 
