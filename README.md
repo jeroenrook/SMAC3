@@ -1,30 +1,26 @@
 # MO-SMAC
 
 MO-SMAC is implemented directly into SMAC3. This repository is forked from the [SMAC3 repository](https://github.com/automl/SMAC3) and therefore contains references and copyright information to those authors. 
-These do not align with the authors of MO-SMAC and therefor the anonymity for this repository remains intact.
+These do not align with the authors of MO-SMAC and, therefore, the anonymity for this repository remains intact.
 
 ## Installation
 
 Create a new environment with Python 3.10 and make sure swig is installed either on your system or
 inside the environment. We demonstrate the installation via anaconda in the following:
 
-Create and activate environment:
+Create and activate environment after which you install `swig`:
 ```
 conda create -n SMAC python=3.10
 conda activate SMAC
-```
-
-Install swig:
-```
 conda install gxx_linux-64 gcc_linux-64 swig
 ```
 
 Clone this repository and install locally:
 ```
-cd SMAC3
+cd SMAC3K
 pip install -e .[dev]
 ```
-
+K
 
 ## Minimal Example
 To use MO-SMAC, there is a multi-objective facade that provides all the functionalities for MO-AAC. The example below shows how this facade can be accessed and used. 
